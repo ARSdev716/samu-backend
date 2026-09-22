@@ -1,0 +1,264 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SAMU 119 - Plateforme de Régulation</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: { red: '#e63946', blue: '#1d3557', light: '#f1faee', cyan: '#457b9d', orange: '#fca311' }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <!-- Custom Dashboard Styles -->
+    <link rel="stylesheet" href="{% static 'core/css/dashboard.css' %}">
+</head>
+<body class="h-screen w-screen overflow-hidden flex flex-col antialiased bg-slate-50 text-slate-700 dark:bg-slate-900 dark:text-slate-200 transition-colors duration-300">
+
+    <!-- TOP NAVIGATION -->
+    <header class="h-16 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between px-6 shrink-0 shadow-sm z-20 transition-colors duration-300">
+        <div class="flex items-center gap-8">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 bg-brand-red rounded-lg flex items-center justify-center text-white shadow-sm">
+                    <i class="fas fa-heartbeat text-sm"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-slate-800 dark:text-white leading-none">SAMU <span class="text-brand-red">119</span></h1>
+                    <p class="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-medium">Plateforme de Régulation</p>
+                </div>
+            </div>
+            
+            <!-- Tab Links -->
+            <nav class="hidden md:flex gap-6 text-sm font-medium text-slate-500 dark:text-slate-400">
+                <button onclick="switchTab('supervision')" id="tab-supervision" class="text-brand-blue border-b-2 border-brand-blue pb-5 pt-5 transition-colors">Supervision</button>
+                <button onclick="switchTab('historique')" id="tab-historique" class="hover:text-slate-800 dark:hover:text-white transition-colors pt-5 pb-5 border-b-2 border-transparent hover:border-slate-300 dark:hover:border-slate-600">Historique</button>
+                <button onclick="switchTab('flotte')" id="tab-flotte" class="hover:text-slate-800 dark:hover:text-white transition-colors pt-5 pb-5 border-b-2 border-transparent hover:border-slate-300 dark:hover:border-slate-600">Flotte Médicale</button>
+            </nav>
+        </div>
+
+        <div class="flex items-center gap-5">
+            <button onclick="toggleTheme()" class="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors">
+                <i class="fas fa-moon dark:hidden"></i>
+                <i class="fas fa-sun hidden dark:block"></i>
+            </button>
+            <div class="text-right">
+                <div id="clock" class="text-lg font-semibold text-slate-800 dark:text-white tabular-nums leading-none">00:00</div>
+            </div>
+            <div class="flex items-center gap-3">
+                <div class="text-right hidden sm:block">
+                    <p class="text-sm font-bold text-slate-800 dark:text-white leading-none">Dr. Régulateur</p>
+                    <p class="text-xs text-slate-500 dark:text-slate-400 font-medium">Connecté</p>
+                </div>
+                <div class="w-10 h-10 bg-brand-blue text-white rounded-full flex items-center justify-center font-bold shadow-sm">
+                    R
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- WORKSPACE -->
+    <div class="flex-1 flex overflow-hidden relative">
+        
+        <!-- VIEW: SUPERVISION (MAP) -->
+        <div id="view-supervision" class="absolute inset-0 flex">
+            <!-- MAP CONTAINER -->
+            <div class="flex-1 relative">
+                <div id="map"></div>
+                
+                <!-- FLOATING KPIs -->
+                <div class="absolute top-4 left-4 right-4 z-[400] pointer-events-none flex gap-4">
+                    <div class="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 pointer-events-auto flex items-center gap-4 min-w-[200px] transition-colors">
+                        <div class="w-10 h-10 rounded-full bg-red-50 dark:bg-red-900/30 flex items-center justify-center text-brand-red"><i class="fas fa-satellite-dish text-lg"></i></div>
+                        <div>
+                            <p class="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wide">Nouveaux SOS</p>
+                            <p class="text-2xl font-bold text-slate-800 dark:text-white leading-none mt-1" id="kpi-sos">0</p>
+                        </div>
+                    </div>
+
+                    <div class="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 pointer-events-auto flex items-center gap-4 min-w-[200px] transition-colors">
+                        <div class="w-10 h-10 rounded-full bg-orange-50 dark:bg-orange-900/30 flex items-center justify-center text-brand-orange"><i class="fas fa-spinner fa-spin text-lg"></i></div>
+                        <div>
+                            <p class="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wide">Missions Actives</p>
+                            <p class="text-2xl font-bold text-slate-800 dark:text-white leading-none mt-1" id="kpi-cours">0</p>
+                        </div>
+                    </div>
+
+                    <div class="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 pointer-events-auto flex items-center gap-4 min-w-[200px] transition-colors">
+                        <div class="w-10 h-10 rounded-full bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center text-brand-blue"><i class="fas fa-truck-medical text-lg"></i></div>
+                        <div>
+                            <p class="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wide">Unités Dispos</p>
+                            <p class="text-2xl font-bold text-slate-800 dark:text-white leading-none mt-1" id="kpi-amb">0</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RIGHT SIDEBAR: INCIDENTS & DISPATCH -->
+            <aside class="w-[400px] bg-white dark:bg-slate-800 border-l border-slate-200 dark:border-slate-700 flex flex-col shrink-0 z-20 shadow-[-4px_0_15px_rgba(0,0,0,0.03)] transition-colors">
+                
+                <!-- QUEUE HEADER -->
+                <div class="p-4 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center">
+                    <h2 class="font-semibold text-slate-800 dark:text-white">Flux d'Incidents</h2>
+                    <span class="text-xs bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold px-2.5 py-1 rounded-full"><i class="fas fa-sort-amount-down mr-1"></i>Récents</span>
+                </div>
+
+                <!-- QUEUE LIST -->
+                <div class="flex-1 overflow-y-auto p-3 space-y-2 bg-slate-50/50 dark:bg-slate-900/50" id="alert-list">
+                    <!-- Alerts will be injected here -->
+                </div>
+
+                <!-- DISPATCH CONSOLE -->
+                <div class="border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex flex-col shadow-[0_-4px_10px_rgba(0,0,0,0.02)] transition-colors">
+                    <div class="p-3 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80">
+                        <h3 class="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-widest"><i class="fas fa-headset mr-2 text-brand-blue"></i>Console de Régulation</h3>
+                    </div>
+
+                    <!-- Empty State -->
+                    <div id="dispatch-empty" class="p-8 flex flex-col items-center justify-center text-center">
+                        <div class="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-300 dark:text-slate-500 mb-3"><i class="fas fa-mouse-pointer text-xl"></i></div>
+                        <p class="text-sm text-slate-500 dark:text-slate-400 font-medium">Sélectionnez une alerte dans le flux pour démarrer la régulation.</p>
+                    </div>
+
+                    <!-- Active State -->
+                    <div id="dispatch-active" class="hidden p-5 flex flex-col gap-4">
+                        <!-- SOS Target -->
+                        <div class="bg-slate-50 dark:bg-slate-700/50 p-3 rounded-lg border border-slate-200 dark:border-slate-600">
+                            <div class="flex justify-between items-start mb-2">
+                                <span class="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wide">Urgence</span>
+                                <span class="text-xs font-mono font-bold text-brand-red bg-red-50 dark:bg-red-500/10 px-2 py-1 rounded border border-red-100 dark:border-red-500/20" id="dispatch-id">#---</span>
+                            </div>
+                            <div class="flex items-start gap-2 mt-2 text-slate-700 dark:text-slate-200">
+                                <i class="fas fa-map-marker-alt text-brand-red mt-1"></i>
+                                <span class="text-sm line-clamp-2 leading-tight" id="dispatch-loc">---</span>
+                            </div>
+                            <div class="flex justify-between items-center mt-3 pt-3 border-t border-slate-200 dark:border-slate-600">
+                                <button onclick="openVictimModal()" class="text-xs font-semibold text-brand-blue hover:text-blue-600"><i class="fas fa-edit mr-1"></i>Infos Victime</button>
+                                <a id="btn-itineraire" href="#" target="_blank" class="text-xs font-semibold text-brand-orange hover:text-orange-600"><i class="fas fa-route mr-1"></i>Itinéraire</a>
+                            </div>
+                        </div>
+
+                        <!-- Assignment / Controls -->
+                        <div id="dispatch-assignment">
+                            <!-- Ambulance Selection -->
+                            <div class="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-100 dark:border-blue-800/50">
+                                <label class="text-xs text-brand-blue dark:text-blue-400 font-semibold uppercase tracking-wide mb-2 block">1. Sélectionner une Unité Libre</label>
+                                <select id="ambulance-select" class="w-full bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-700 text-slate-800 dark:text-white text-sm rounded-md p-2.5 focus:outline-none focus:ring-2 focus:ring-brand-blue cursor-pointer font-semibold shadow-sm appearance-none">
+                                </select>
+                                <div class="relative -top-7 right-3 text-right pointer-events-none text-slate-400"><i class="fas fa-chevron-down text-xs"></i></div>
+                            </div>
+                            <!-- Deploy Button -->
+                            <button id="btn-deploy" onclick="deployerAmbulance()" class="w-full bg-brand-red hover:bg-red-600 text-white font-bold py-3.5 rounded-lg shadow-md transition-colors flex justify-center items-center gap-2 mt-1">
+                                <i class="fas fa-bolt"></i> <span class="tracking-wide">DÉCLENCHER L'INTERVENTION</span>
+                            </button>
+                        </div>
+
+                        <!-- Update Status Button (for active missions) -->
+                        <div id="mission-controls" class="hidden flex-col gap-2">
+                            <label class="text-xs text-brand-orange font-semibold uppercase tracking-wide">État de l'intervention</label>
+                            <div class="flex gap-2">
+                                <select id="mission-status-select" class="flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm rounded-md p-2 focus:ring-brand-blue">
+                                    <option value="en_route">En route</option>
+                                    <option value="arrive">Sur les lieux</option>
+                                    <option value="prise_en_charge">Prise en charge</option>
+                                    <option value="transport">Vers l'hôpital</option>
+                                    <option value="termine">Terminée (Clôturer)</option>
+                                </select>
+                                <button onclick="updateMissionStatus()" class="bg-slate-800 hover:bg-slate-700 text-white px-3 py-2 rounded-md"><i class="fas fa-check"></i></button>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </aside>
+        </div>
+
+        <!-- VIEW: HISTORIQUE -->
+        <div id="view-historique" class="absolute inset-0 bg-white dark:bg-slate-900 hidden flex-col overflow-hidden z-10">
+            <div class="p-6 border-b border-slate-200 dark:border-slate-700">
+                <h2 class="text-2xl font-bold text-slate-800 dark:text-white">Historique des Interventions</h2>
+                <p class="text-slate-500 text-sm mt-1">Consultez l'historique complet des missions terminées.</p>
+            </div>
+            <div class="flex-1 p-6 overflow-auto">
+                <table class="w-full text-left text-sm text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 shadow-sm rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700">
+                    <thead class="text-xs uppercase bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700">
+                        <tr>
+                            <th class="px-4 py-3">ID Mission</th>
+                            <th class="px-4 py-3">Date</th>
+                            <th class="px-4 py-3">SOS ID</th>
+                            <th class="px-4 py-3">Ambulance</th>
+                            <th class="px-4 py-3">Gravité</th>
+                            <th class="px-4 py-3">Statut</th>
+                        </tr>
+                    </thead>
+                    <tbody id="history-table-body" class="divide-y divide-slate-100 dark:divide-slate-700">
+                        <!-- Injected by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- VIEW: FLOTTE -->
+        <div id="view-flotte" class="absolute inset-0 bg-slate-50 dark:bg-slate-900 hidden flex-col overflow-hidden z-10">
+            <div class="p-6 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+                <h2 class="text-2xl font-bold text-slate-800 dark:text-white">Flotte Médicale</h2>
+                <p class="text-slate-500 text-sm mt-1">État en temps réel des unités d'intervention.</p>
+            </div>
+            <div class="flex-1 p-6 overflow-auto">
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="fleet-grid">
+                    <!-- Injected by JS -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: Infos Victime -->
+    <div id="modal-victime" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[1000] hidden flex items-center justify-center">
+        <div class="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-lg border border-slate-200 dark:border-slate-700 overflow-hidden mx-4">
+            <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center">
+                <h3 class="font-bold text-lg text-slate-800 dark:text-white">Informations Victime</h3>
+                <button onclick="closeVictimModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"><i class="fas fa-times text-xl"></i></button>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">Téléphone de contact</label>
+                    <input type="text" id="victime-tel" class="w-full border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-900 text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-blue outline-none" placeholder="Ex: 690 00 00 00">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">Gravité (Triage)</label>
+                    <select id="victime-gravite" class="w-full border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-900 text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-blue outline-none">
+                        <option value="P1">P1 - Urgence absolue (Vitale)</option>
+                        <option value="P2">P2 - Urgence relative</option>
+                        <option value="P3">P3 - Non urgent</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">Description clinique / Note du Régulateur</label>
+                    <textarea id="victime-desc" rows="4" class="w-full border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-900 text-slate-800 dark:text-white focus:ring-2 focus:ring-brand-blue outline-none" placeholder="Décrivez l'état de la victime..."></textarea>
+                </div>
+            </div>
+            <div class="px-6 py-4 border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 flex justify-end gap-3">
+                <button onclick="closeVictimModal()" class="px-4 py-2 font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors">Annuler</button>
+                <button onclick="saveVictimInfo()" class="px-4 py-2 font-semibold text-white bg-brand-blue hover:bg-blue-600 rounded-lg shadow-sm transition-colors">Enregistrer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Custom Dashboard Logic -->
+    <script src="{% static 'core/js/dashboard.js' %}"></script>
+</body>
+</html>
