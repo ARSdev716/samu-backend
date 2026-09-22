@@ -60,26 +60,15 @@ ASGI_APPLICATION = "ars_backend.asgi.application"
 
 AUTH_USER_MODEL = "core.Utilisateur"
 
-# --- Connexion à la base Postgres hébergée sur Supabase (ou SQLite local par défaut) ---
-SUPABASE_HOST = config("SUPABASE_DB_HOST", default="")
-if SUPABASE_HOST:
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.postgresql",
-            "HOST": SUPABASE_HOST,
-            "PORT": config("SUPABASE_DB_PORT", default="5432"),
-            "NAME": config("SUPABASE_DB_NAME", default="postgres"),
-            "USER": config("SUPABASE_DB_USER", default="postgres"),
-            "PASSWORD": config("SUPABASE_DB_PASSWORD", default=""),
-        }
-    }
-else:
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.sqlite3",
-            "NAME": BASE_DIR / "db.sqlite3",
-        }
-    }
+import dj_database_url
+
+DATABASES = {
+    "default": dj_database_url.config(
+        default=config("DATABASE_URL", default="sqlite:///" + str(BASE_DIR / "db.sqlite3")),
+        conn_max_age=600,
+        conn_health_checks=True,
+    )
+}
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
@@ -116,3 +105,4 @@ MEDIA_ROOT = BASE_DIR / 'media'
 
 
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+
