@@ -170,16 +170,21 @@ for amb in ambulanciers:
 print("\n--- Insertion des utilisateurs de test ---")
 for u in utilisateurs:
     pwd = u.pop("password")
+    is_super = u.get("username") == "admin1"
     obj, created = Utilisateur.objects.get_or_create(
         username=u["username"],
         defaults=u,
     )
+    # Toujours forcer le mot de passe et les droits admin (même si existant)
+    obj.set_password(pwd)
+    if is_super:
+        obj.is_superuser = True
+        obj.is_staff = True
+    obj.save()
     if created:
-        obj.set_password(pwd)
-        obj.save()
         print(f"  [CREE] {obj.username} ({obj.get_role_display()}) — mdp: ArsSecure2026!")
     else:
-        print(f"  [existant] {obj.username}")
+        print(f"  [MIS A JOUR] {obj.username}")
 
 print("\n--- Assignation des ambulanciers aux véhicules ---")
 for amb in Ambulance.objects.all():
