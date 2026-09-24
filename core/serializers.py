@@ -53,13 +53,14 @@ class SosSerializer(serializers.ModelSerializer):
     """
     ambulance_latitude = serializers.SerializerMethodField()
     ambulance_longitude = serializers.SerializerMethodField()
+    mission_statut = serializers.SerializerMethodField()
 
     class Meta:
         model = Alerte
         fields = [
             "id", "id_suivi", "latitude", "longitude",
             "adresse_manuelle", "description", "telephone_victime",
-            "statut", "date_creation", "ambulance_latitude", "ambulance_longitude", "photo"
+            "statut", "date_creation", "ambulance_latitude", "ambulance_longitude", "photo", "mission_statut"
         ]
         read_only_fields = ["id", "id_suivi", "statut", "date_creation"]
         
@@ -71,6 +72,11 @@ class SosSerializer(serializers.ModelSerializer):
     def get_ambulance_longitude(self, obj):
         if hasattr(obj, 'mission') and obj.mission and obj.mission.ambulance:
             return obj.mission.ambulance.longitude
+        return None
+
+    def get_mission_statut(self, obj):
+        if hasattr(obj, 'mission') and obj.mission:
+            return obj.mission.statut
         return None
 
 
