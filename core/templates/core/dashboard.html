@@ -252,12 +252,16 @@
           <h3 class="text-xs font-bold text-slate-600 uppercase tracking-widest">Console de Régulation</h3>
         </div>
 
-        <!-- État vide -->
-        <div id="consoleEmpty" class="py-8 px-4 flex flex-col items-center text-center">
-          <div class="w-11 h-11 bg-slate-100 rounded-full flex items-center justify-center text-slate-300 mb-2">
-            <i class="fas fa-mouse-pointer text-xl"></i>
+        <!-- État vide avec option d'affectation manuelle -->
+        <div id="consoleEmpty" class="py-6 px-4 flex flex-col items-center text-center">
+          <div class="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 mb-2">
+            <i class="fas fa-headset text-lg"></i>
           </div>
-          <p class="text-sm text-slate-400 font-medium">Cliquez sur une alerte pour lancer la régulation.</p>
+          <p class="text-xs text-slate-500 font-medium mb-3">Cliquez sur une alerte à gauche, ou affectez directement une ambulance par son ID d'alerte.</p>
+          <button onclick="ouvrirDispatchManuel()"
+            class="bg-brand-blue hover:bg-blue-700 text-white text-xs font-bold py-2.5 px-4 rounded-xl shadow transition flex items-center gap-2">
+            <i class="fas fa-plus"></i><span>Nouvelle Affectation Directe</span>
+          </button>
         </div>
 
         <!-- État actif -->
@@ -616,7 +620,8 @@ function updateMapMarkers() {
     if(!a.latitude) return;
     const ic=a.statut==='disponible'?PINS.amb_ok:a.statut==='en_mission'?PINS.amb_mis:PINS.amb_off;
     const m=L.marker([a.latitude,a.longitude],{icon:ic}).addTo(map);
-    m.bindPopup(`<b>${a.matricule}</b><br><span style="font-size:12px;color:#64748b">${a.statut.replace('_',' ')}</span>`);
+    const btnAssign = a.statut === 'disponible' ? `<div style="margin-top:6px;"><button onclick="assignerCetteAmbulance(${a.id})" style="background:#1d4ed8;color:#fff;border:none;border-radius:6px;padding:4px 8px;font-size:11px;font-weight:700;cursor:pointer;width:100%;">Affecter cette unité</button></div>` : '';
+    m.bindPopup(`<b>${a.matricule}</b><br><span style="font-size:12px;color:#64748b">${a.statut.replace('_',' ')}</span>${btnAssign}`);
     mks['a'+a.id]=m;
   });
   hopitaux.forEach(h=>{
@@ -723,63 +728,98 @@ function selectAlerte(id, pan=false) {
     $('mStatusSel').dataset.mid=mActive.id;
   }
   renderAlertList();
+function ouvrirDispatchManuel(preselectedAmbId=null) {
+  selId = null;
+  $('consoleEmpty').classList.add('hidden');
+  $('consoleActive').classList.remove('hidden');
+  $('dispatchSection').classList.remove('hidden');
+  $('missionSection').classList.add('hidden');
+  $('missionSection').classList.remove('flex');
+
+  $('cSosId').textContent = 'Affectation manuelle';
+  $('cLoc').textContent = 'Sélectionnez une ambulance et indiquez l\'ID de l\'alerte';
+  $('cGrav').innerHTML = '<span class="px-2 py-0.5 rounded text-xs font-bold bg-blue-100 text-brand-blue">Mode Manuel</span>';
+
+  // Si des alertes sont disponibles, pré-remplir avec la 1ère non prise en charge
+  const attente = alertes.find(a => a.statut === 'en_attente') || alertes[0];
+  if (attente && !$('alerteIdInput').value) {
+    $('alerteIdInput').value = attente.id;
+  }
+  buildAmbCards(null, preselectedAmbId);
 }
 
-function buildAmbCards(alerte) {
-  const dispos=ambulances.filter(a=>a.statut==='disponible');
-  const el=$('ambCards');
-  if(!dispos.length){
-    el.innerHTML=`<div class="text-center py-3 bg-red-50 border border-red-100 rounded-lg text-sm text-red-500">
+function assignerCetteAmbulance(ambId) {
+  gotoTab('supervision');
+  setTimeout(() => ouvrirDispatchManuel(ambId), 150);
+}
+
+function buildAmbCards(alerte=null, preselectedAmbId=null) {
+  const dispos = ambulances.filter(a => a.statut === 'disponible');
+  const el = $('ambCards');
+  if (!dispos.length) {
+    el.innerHTML = `<div class="text-center py-3 bg-red-50 border border-red-100 rounded-lg text-sm text-red-500">
       <i class="fas fa-exclamation-triangle mr-1"></i>Aucune unité disponible</div>`;
     return;
   }
-  // trier par distance si GPS dispo
-  const sorted=dispos.map(a=>{
-    const d=(a.latitude&&alerte.latitude)?haversine(alerte.latitude,alerte.longitude,a.latitude,a.longitude):null;
-    return {...a,dist:d};
-  }).sort((a,b)=> a.dist===null?1:b.dist===null?-1:a.dist-b.dist);
+  // Trier par distance si GPS dispo
+  const sorted = dispos.map(a => {
+    const d = (a.latitude && alerte && alerte.latitude) ? haversine(alerte.latitude, alerte.longitude, a.latitude, a.longitude) : null;
+    return { ...a, dist: d };
+  }).sort((a,b) => a.dist === null ? 1 : b.dist === null ? -1 : a.dist - b.dist);
 
-  el.innerHTML=sorted.map((a,i)=>`
+  el.innerHTML = sorted.map((a, i) => {
+    const isChecked = preselectedAmbId ? (a.id == preselectedAmbId) : (i === 0);
+    return `
     <label class="flex items-center gap-2.5 px-3 py-2 rounded-xl border-2 cursor-pointer transition
-      ${i===0?'border-brand-blue bg-blue-50':'border-slate-200 bg-white hover:border-blue-300'}">
-      <input type="radio" name="ambR" value="${a.id}" ${i===0?'checked':''} class="accent-blue-600">
+      ${isChecked ? 'border-brand-blue bg-blue-50' : 'border-slate-200 bg-white hover:border-blue-300'}">
+      <input type="radio" name="ambR" value="${a.id}" ${isChecked ? 'checked' : ''} class="accent-blue-600">
       <div class="flex-1 min-w-0">
         <p class="font-bold text-slate-800 text-sm leading-none">${a.matricule}</p>
-        <p class="text-[11px] text-slate-400 mt-0.5">${a.equipement||'SMUR Standard'}</p>
+        <p class="text-[11px] text-slate-400 mt-0.5">${a.equipement || 'SMUR Standard'}</p>
       </div>
-      ${a.dist!==null?`<span class="text-xs font-bold text-brand-blue shrink-0">${a.dist.toFixed(1)} km</span>`:''}
+      ${a.dist !== null ? `<span class="text-xs font-bold text-brand-blue shrink-0">${a.dist.toFixed(1)} km</span>` : ''}
       <span class="w-2 h-2 bg-green-500 rounded-full shrink-0"></span>
-    </label>`).join('');
+    </label>`;
+  }).join('');
 }
 
-const haversine=(la1,lo1,la2,lo2)=>{
-  const R=6371,d=x=>x*Math.PI/180;
-  const a=Math.sin(d(la2-la1)/2)**2+Math.cos(d(la1))*Math.cos(d(la2))*Math.sin(d(lo2-lo1)/2)**2;
-  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+const haversine = (la1,lo1,la2,lo2) => {
+  const R = 6371, d = x => x * Math.PI / 180;
+  const a = Math.sin(d(la2-la1)/2)**2 + Math.cos(d(la1))*Math.cos(d(la2))*Math.sin(d(lo2-lo1)/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 };
 
 // ── Deploy ambulance ──────────────────────────────────────────────────────────
 async function deployAmbulance() {
-  const ambR=document.querySelector('input[name="ambR"]:checked');
-  if(!ambR){toast('Sélectionnez une ambulance.','err'); return;}
-  const alerteId=$('alerteIdInput').value;
-  if(!alerteId){toast('Aucun identifiant d\'alerte.','err'); return;}
-  const btn=$('btnDeploy');
-  btn.innerHTML='<i class="fas fa-spinner fa-spin mr-2"></i>Transmission…'; btn.disabled=true;
+  const ambR = document.querySelector('input[name="ambR"]:checked');
+  if (!ambR) { toast('Sélectionnez une ambulance.', 'err'); return; }
+  const alerteId = $('alerteIdInput').value.trim();
+  if (!alerteId) { toast('Aucun identifiant d\'alerte spécifié.', 'err'); return; }
+  const btn = $('btnDeploy');
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Transmission en cours…';
+  btn.disabled = true;
+
   try {
-    const r=await api('/missions/envoyer_dashboard/',{
-      method:'POST', body:JSON.stringify({alerte:parseInt(alerteId), ambulance:parseInt(ambR.value)})
+    const r = await api('/missions/envoyer_dashboard/', {
+      method: 'POST',
+      body: JSON.stringify({ alerte: alerteId, ambulance: ambR.value })
     });
-    if(!r) throw new Error('Pas de réponse du serveur.');
-    const d=await r.json();
-    if(!r.ok) throw new Error(d.error||d.detail||'Erreur lors de l\'envoi.');
-    toast(`✅ Mission #${d.mission} créée — Ambulance ${ambulances.find(a=>a.id==ambR.value)?.matricule} en route!`,'ok');
-    selId=null;
+    if (!r) throw new Error('Pas de réponse du serveur.');
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || d.detail || 'Erreur lors de l\'envoi.');
+
+    const ambNom = d.ambulance || ambulances.find(a => a.id == ambR.value)?.matricule || 'assignée';
+    toast(`✅ Mission #${d.mission} créée — Ambulance ${ambNom} en route !`, 'ok');
+    selId = null;
     $('consoleEmpty').classList.remove('hidden');
     $('consoleActive').classList.add('hidden');
     await loadAll();
-  } catch(e){ toast(e.message,'err'); }
-  finally { btn.innerHTML='<i class="fas fa-bolt mr-2"></i>DÉCLENCHER L\'INTERVENTION'; btn.disabled=false; }
+  } catch(e) {
+    toast(e.message, 'err');
+  } finally {
+    btn.innerHTML = '<i class="fas fa-bolt mr-2"></i>DÉCLENCHER L\'INTERVENTION';
+    btn.disabled = false;
+  }
 }
 
 // ── Update mission status ─────────────────────────────────────────────────────
@@ -878,6 +918,11 @@ function renderParc(){
         <p class="font-bold text-orange-600 uppercase mb-0.5">Mission active</p>
         <p class="text-slate-600">${SSTAT[mA.statut]||mA.statut}</p>
       </div>`:''}
+      ${a.statut === 'disponible' ? `
+      <button onclick="assignerCetteAmbulance(${a.id})"
+        class="w-full bg-brand-blue hover:bg-blue-700 text-white text-xs font-bold py-2 rounded-xl transition flex items-center justify-center gap-1.5 shadow-sm">
+        <i class="fas fa-paper-plane text-[10px]"></i><span>Affecter à une Urgence</span>
+      </button>` : ''}
     </div>`;
   }).join('');
 }

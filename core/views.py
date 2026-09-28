@@ -441,12 +441,21 @@ def dashboard_data(request):
 @api_view(['POST'])
 @permission_classes([EstRegulateurOuAdmin])
 def dashboard_assign(request):
-    alerte_id = request.data.get('alerte')
-    ambulance_id = request.data.get('ambulance')
+    alerte_input = request.data.get('alerte')
+    ambulance_input = request.data.get('ambulance')
     
     try:
-        alerte = Alerte.objects.get(id=alerte_id)
-        ambulance = Ambulance.objects.get(id=ambulance_id, statut=Ambulance.Statut.DISPONIBLE)
+        # Recherche alerte par ID primaire ou par UUID id_suivi
+        try:
+            alerte = Alerte.objects.get(id=int(alerte_input))
+        except (ValueError, TypeError):
+            alerte = Alerte.objects.get(id_suivi=alerte_input)
+            
+        # Recherche ambulance par ID primaire ou par matricule
+        try:
+            ambulance = Ambulance.objects.get(id=int(ambulance_input))
+        except (ValueError, TypeError):
+            ambulance = Ambulance.objects.get(matricule=ambulance_input)
 
         from core.services.itineraire import calculer_itineraire_optimal
         itineraire = None
@@ -456,12 +465,22 @@ def dashboard_assign(request):
                 destination=(alerte.latitude, alerte.longitude),
             )
             
-        mission = Mission.objects.create(
-            alerte=alerte,
-            ambulance=ambulance,
-            medecin_regulateur=request.user,
-            itineraire_optimise=itineraire,
-        )
+        # Si une mission existe déjà pour cette alerte, la mettre à jour, sinon la créer
+        if hasattr(alerte, 'mission'):
+            mission = alerte.mission
+            mission.ambulance = ambulance
+            mission.medecin_regulateur = request.user
+            mission.itineraire_optimise = itineraire
+            mission.statut = Mission.Statut.EN_ROUTE
+            mission.date_fin = None
+            mission.save()
+        else:
+            mission = Mission.objects.create(
+                alerte=alerte,
+                ambulance=ambulance,
+                medecin_regulateur=request.user,
+                itineraire_optimise=itineraire,
+            )
         
         ambulance.statut = Ambulance.Statut.EN_MISSION
         ambulance.save(update_fields=['statut'])
@@ -469,11 +488,11 @@ def dashboard_assign(request):
         alerte.statut = Alerte.StatutAlerte.PRISE_EN_CHARGE
         alerte.save(update_fields=['statut'])
         
-        return Response({'success': True, 'mission': mission.id})
+        return Response({'success': True, 'mission': mission.id, 'ambulance': ambulance.matricule})
     except Ambulance.DoesNotExist:
-        return Response({'error': 'Ambulance introuvable ou non disponible.'}, status=400)
+        return Response({'error': f'Ambulance introuvable : {ambulance_input}'}, status=400)
     except Alerte.DoesNotExist:
-        return Response({'error': 'Alerte introuvable.'}, status=404)
+        return Response({'error': f'Alerte introuvable : {alerte_input}'}, status=404)
     except Exception as e:
         return Response({'error': str(e)}, status=400)
 @api_view(['POST'])
