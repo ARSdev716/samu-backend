@@ -70,34 +70,73 @@ class AlerteSerializer(serializers.ModelSerializer):
 class SosSerializer(serializers.ModelSerializer):
     """
     UC_02 - Endpoint SOS public (sans authentification).
+    Fournit la position en temps réel de l'ambulance et l'itinéraire tracé.
     """
     ambulance_latitude = serializers.SerializerMethodField()
     ambulance_longitude = serializers.SerializerMethodField()
+    ambulance_matricule = serializers.SerializerMethodField()
     mission_statut = serializers.SerializerMethodField()
+    itineraire_points = serializers.SerializerMethodField()
 
     class Meta:
         model = Alerte
         fields = [
             "id", "id_suivi", "latitude", "longitude",
             "adresse_manuelle", "description", "telephone_victime",
-            "statut", "date_creation", "ambulance_latitude", "ambulance_longitude", "photo", "mission_statut"
+            "statut", "date_creation", "photo",
+            "ambulance_latitude", "ambulance_longitude",
+            "ambulance_matricule", "mission_statut", "itineraire_points",
         ]
         read_only_fields = ["id", "id_suivi", "statut", "date_creation"]
-        
+
     def get_ambulance_latitude(self, obj):
-        if hasattr(obj, 'mission') and obj.mission and obj.mission.ambulance:
+        if hasattr(obj, "mission") and obj.mission and obj.mission.ambulance:
             return obj.mission.ambulance.latitude
         return None
-        
+
     def get_ambulance_longitude(self, obj):
-        if hasattr(obj, 'mission') and obj.mission and obj.mission.ambulance:
+        if hasattr(obj, "mission") and obj.mission and obj.mission.ambulance:
             return obj.mission.ambulance.longitude
         return None
 
+    def get_ambulance_matricule(self, obj):
+        if hasattr(obj, "mission") and obj.mission and obj.mission.ambulance:
+            return obj.mission.ambulance.matricule
+        return None
+
     def get_mission_statut(self, obj):
-        if hasattr(obj, 'mission') and obj.mission:
+        if hasattr(obj, "mission") and obj.mission:
             return obj.mission.statut
         return None
+
+    def get_itineraire_points(self, obj):
+        if not hasattr(obj, "mission") or not obj.mission:
+            return []
+        mission = obj.mission
+        iti = mission.itineraire_optimise
+        if iti and isinstance(iti, dict):
+            geometrie = iti.get("geometrie", {})
+            coords = geometrie.get("coordinates", [])
+            if coords:
+                return [{"latitude": c[1], "longitude": c[0]} for c in coords]
+            if "origine" in iti and "destination" in iti and iti["origine"] and iti["destination"]:
+                return [
+                    {"latitude": iti["origine"][0], "longitude": iti["origine"][1]},
+                    {"latitude": iti["destination"][0], "longitude": iti["destination"][1]},
+                ]
+        # Repli direct : position ambulance -> position alerte
+        if (
+            mission.ambulance
+            and mission.ambulance.latitude
+            and mission.ambulance.longitude
+            and obj.latitude
+            and obj.longitude
+        ):
+            return [
+                {"latitude": mission.ambulance.latitude, "longitude": mission.ambulance.longitude},
+                {"latitude": obj.latitude, "longitude": obj.longitude},
+            ]
+        return []
 
 
 class MissionSerializer(serializers.ModelSerializer):
@@ -120,13 +159,30 @@ class MissionSerializer(serializers.ModelSerializer):
     def get_itineraire_points(self, obj):
         """Extrait les coordonnées de l'itinéraire OSRM pour la carte mobile."""
         iti = obj.itineraire_optimise
-        if not iti:
-            return []
-        # OSRM retourne la géométrie en GeoJSON
-        geometrie = iti.get("geometrie", {})
-        coords = geometrie.get("coordinates", [])
-        # GeoJSON = [lng, lat], on convertit en {latitude, longitude}
-        return [{"latitude": c[1], "longitude": c[0]} for c in coords]
+        if iti and isinstance(iti, dict):
+            geometrie = iti.get("geometrie", {})
+            coords = geometrie.get("coordinates", [])
+            if coords:
+                return [{"latitude": c[1], "longitude": c[0]} for c in coords]
+            if "origine" in iti and "destination" in iti and iti["origine"] and iti["destination"]:
+                return [
+                    {"latitude": iti["origine"][0], "longitude": iti["origine"][1]},
+                    {"latitude": iti["destination"][0], "longitude": iti["destination"][1]},
+                ]
+        # Repli direct
+        if (
+            obj.ambulance
+            and obj.ambulance.latitude
+            and obj.ambulance.longitude
+            and obj.alerte
+            and obj.alerte.latitude
+            and obj.alerte.longitude
+        ):
+            return [
+                {"latitude": obj.ambulance.latitude, "longitude": obj.ambulance.longitude},
+                {"latitude": obj.alerte.latitude, "longitude": obj.alerte.longitude},
+            ]
+        return []
 
 
 class EnvoyerAmbulanceSerializer(serializers.Serializer):

@@ -387,11 +387,20 @@ def dashboard_assign(request):
     try:
         alerte = Alerte.objects.get(id=alerte_id)
         ambulance = Ambulance.objects.get(id=ambulance_id, statut=Ambulance.Statut.DISPONIBLE)
+
+        from core.services.itineraire import calculer_itineraire_optimal
+        itineraire = None
+        if ambulance.latitude and ambulance.longitude and alerte.latitude and alerte.longitude:
+            itineraire = calculer_itineraire_optimal(
+                origine=(ambulance.latitude, ambulance.longitude),
+                destination=(alerte.latitude, alerte.longitude),
+            )
             
         mission = Mission.objects.create(
             alerte=alerte,
             ambulance=ambulance,
             medecin_regulateur=request.user,
+            itineraire_optimise=itineraire,
         )
         
         ambulance.statut = Ambulance.Statut.EN_MISSION

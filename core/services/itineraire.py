@@ -50,9 +50,18 @@ def _appeler_osrm(origine, destination):
 
 
 def _itineraire_direct(origine, destination, motif):
+    lat1, lon1 = origine if origine else (None, None)
+    lat2, lon2 = destination if destination else (None, None)
+    coords = []
+    if lon1 is not None and lat1 is not None and lon2 is not None and lat2 is not None:
+        coords = [[lon1, lat1], [lon2, lat2]]
     return {
         "source": "repli_direct",
         "motif": motif,
         "origine": origine,
         "destination": destination,
+        "geometrie": {
+            "type": "LineString",
+            "coordinates": coords,
+        },
     }
