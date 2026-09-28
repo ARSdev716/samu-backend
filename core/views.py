@@ -35,18 +35,17 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Utilisateur
-        fields = ["username", "password", "email", "telephone", "role"]
+        fields = ["username", "password", "email", "telephone"]
 
     def create(self, validated_data):
-        # Par défaut, on force le rôle usager pour les inscriptions publiques
-        # (seul un admin pourrait créer les autres rôles depuis l'interface admin)
-        role = validated_data.get("role", Utilisateur.Role.USAGER)
+        # Sécurité : l'inscription publique crée TOUJOURS un usager.
+        # Les autres rôles sont créés uniquement par l'admin Django.
         user = Utilisateur.objects.create_user(
             username=validated_data["username"],
             password=validated_data["password"],
             email=validated_data.get("email", ""),
             telephone=validated_data.get("telephone", ""),
-            role=role,
+            role=Utilisateur.Role.USAGER,
         )
         return user
 
@@ -105,6 +104,35 @@ class RegisterViewSet(viewsets.GenericViewSet):
             "role": user.role,
             "ambulance_id": ambulance.id,
             "matricule": ambulance.matricule,
+        })
+
+    @action(detail=False, methods=["get", "patch"], permission_classes=[EstAuthentifie])
+    def profil(self, request):
+        """Consultation et modification des informations du compte utilisateur."""
+        user = request.user
+        if request.method == "PATCH":
+            telephone = request.data.get("telephone")
+            email = request.data.get("email")
+            first_name = request.data.get("first_name")
+            last_name = request.data.get("last_name")
+            if telephone is not None:
+                user.telephone = str(telephone).strip()
+            if email is not None:
+                user.email = str(email).strip()
+            if first_name is not None:
+                user.first_name = str(first_name).strip()
+            if last_name is not None:
+                user.last_name = str(last_name).strip()
+            user.save()
+        return Response({
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "telephone": user.telephone,
+            "role": user.role,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "date_joined": user.date_joined,
         })
 
 
@@ -173,9 +201,14 @@ class SosViewSet(viewsets.GenericViewSet):
 class AlerteViewSet(viewsets.ModelViewSet):
     """UC_02 - Gestion complète des alertes (authentifié)."""
 
-    queryset = Alerte.objects.all().order_by("-date_creation")
     serializer_class = AlerteSerializer
     permission_classes = [EstAuthentifie]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_authenticated and user.role == Utilisateur.Role.USAGER:
+            return Alerte.objects.filter(usager=user).order_by("-date_creation")
+        return Alerte.objects.all().order_by("-date_creation")
 
     def perform_create(self, serializer):
         # L'usager authentifié est automatiquement rattaché à son alerte.
@@ -325,15 +358,13 @@ class MissionViewSet(viewsets.ModelViewSet):
 # Tableau de Bord (Web MVP)
 # ==========================================
 from django.shortcuts import render
-from rest_framework.decorators import api_view, permission_classes, authentication_classes
-from rest_framework.permissions import AllowAny
+from rest_framework.decorators import api_view, permission_classes
 
 def dashboard_view(request):
     return render(request, 'core/dashboard.html')
 
 @api_view(['GET'])
-@authentication_classes([])
-@permission_classes([AllowAny])
+@permission_classes([EstRegulateurOuAdmin])
 def dashboard_data(request):
     alertes_en_cours = Alerte.objects.exclude(statut='annulee').exclude(mission__statut='termine').order_by('-date_creation')
     ambulances = Ambulance.objects.all()
@@ -348,38 +379,36 @@ def dashboard_data(request):
     })
 
 @api_view(['POST'])
-@authentication_classes([])
-@permission_classes([AllowAny])
+@permission_classes([EstRegulateurOuAdmin])
 def dashboard_assign(request):
     alerte_id = request.data.get('alerte')
     ambulance_id = request.data.get('ambulance')
     
     try:
         alerte = Alerte.objects.get(id=alerte_id)
-        ambulance = Ambulance.objects.get(id=ambulance_id)
-        regulateur = Utilisateur.objects.filter(role='regulateur').first()
-        if not regulateur:
-            regulateur = Utilisateur.objects.first()
+        ambulance = Ambulance.objects.get(id=ambulance_id, statut=Ambulance.Statut.DISPONIBLE)
             
         mission = Mission.objects.create(
             alerte=alerte,
             ambulance=ambulance,
-            medecin_regulateur=regulateur,
-            instructions="Assignation rapide (Dashboard)"
+            medecin_regulateur=request.user,
         )
         
-        ambulance.statut = Ambulance.Statut.EN_INTERVENTION
+        ambulance.statut = Ambulance.Statut.EN_MISSION
         ambulance.save(update_fields=['statut'])
         
-        alerte.statut = Alerte.Statut.EN_COURS
+        alerte.statut = Alerte.StatutAlerte.PRISE_EN_CHARGE
         alerte.save(update_fields=['statut'])
         
         return Response({'success': True, 'mission': mission.id})
+    except Ambulance.DoesNotExist:
+        return Response({'error': 'Ambulance introuvable ou non disponible.'}, status=400)
+    except Alerte.DoesNotExist:
+        return Response({'error': 'Alerte introuvable.'}, status=404)
     except Exception as e:
         return Response({'error': str(e)}, status=400)
 @api_view(['POST'])
-@authentication_classes([])
-@permission_classes([AllowAny])
+@permission_classes([EstRegulateurOuAdmin])
 def dashboard_update_alerte(request, pk):
     try:
         alerte = Alerte.objects.get(pk=pk)
@@ -392,21 +421,28 @@ def dashboard_update_alerte(request, pk):
         return Response({'error': 'Alerte introuvable'}, status=404)
 
 @api_view(['POST'])
-@authentication_classes([])
-@permission_classes([AllowAny])
+@permission_classes([EstRegulateurOuAdmin])
 def dashboard_update_mission(request, pk):
     try:
         mission = Mission.objects.get(pk=pk)
-        mission.statut = request.data.get('statut', mission.statut)
+        nouveau_statut = request.data.get('statut', mission.statut)
+
+        # Valider que le statut demandé existe dans l'enum
+        statuts_valides = [choix[0] for choix in Mission.Statut.choices]
+        if nouveau_statut not in statuts_valides:
+            return Response({'error': f'Statut invalide: {nouveau_statut}'}, status=400)
+
+        mission.statut = nouveau_statut
         mission.save()
         
-        # Si la mission est terminee, on libere l'ambulance et l'alerte
-        if mission.statut == 'termine':
-            mission.ambulance.statut = 'disponible'
-            mission.ambulance.save()
-            mission.alerte.statut = 'termine'
-            mission.alerte.save()
+        # Si la mission est terminée, on libère l'ambulance
+        if mission.statut == Mission.Statut.TERMINE:
+            mission.date_fin = timezone.now()
+            mission.save(update_fields=['date_fin'])
+            mission.ambulance.statut = Ambulance.Statut.DISPONIBLE
+            mission.ambulance.save(update_fields=['statut'])
             
         return Response({'status': 'ok'})
     except Mission.DoesNotExist:
         return Response({'error': 'Mission introuvable'}, status=404)
+

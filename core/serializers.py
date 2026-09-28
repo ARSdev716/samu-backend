@@ -13,6 +13,12 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         token["username"] = user.username
         return token
 
+    def validate(self, attrs):
+        data = super().validate(attrs)
+        data["role"] = self.user.role
+        data["username"] = self.user.username
+        return data
+
 
 class LoginMatriculeSerializer(serializers.Serializer):
     """Authentification ambulancier par matricule."""
@@ -37,14 +43,28 @@ class HopitalSerializer(serializers.ModelSerializer):
 
 
 class AlerteSerializer(serializers.ModelSerializer):
+    mission_statut = serializers.SerializerMethodField()
+    ambulance_matricule = serializers.SerializerMethodField()
+
     class Meta:
         model = Alerte
         fields = [
             "id", "id_suivi", "usager", "latitude", "longitude",
             "adresse_manuelle", "description", "telephone_victime",
-            "gravite", "statut", "date_creation", "photo"
+            "gravite", "statut", "date_creation", "photo",
+            "mission_statut", "ambulance_matricule",
         ]
         read_only_fields = ["id", "id_suivi", "usager", "statut", "date_creation"]
+
+    def get_mission_statut(self, obj):
+        if hasattr(obj, 'mission') and obj.mission:
+            return obj.mission.statut
+        return None
+
+    def get_ambulance_matricule(self, obj):
+        if hasattr(obj, 'mission') and obj.mission and obj.mission.ambulance:
+            return obj.mission.ambulance.matricule
+        return None
 
 
 class SosSerializer(serializers.ModelSerializer):
