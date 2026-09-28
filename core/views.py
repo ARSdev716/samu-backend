@@ -275,11 +275,28 @@ class AmbulanceViewSet(viewsets.ModelViewSet):
 class MissionViewSet(viewsets.ModelViewSet):
     """UC_03 - Envoyer une ambulance / UC_04 - Mettre à jour le statut."""
 
-    queryset = Mission.objects.select_related(
-        "alerte", "ambulance", "medecin_regulateur", "hopital_recepteur"
-    ).order_by("-date_creation")
     serializer_class = MissionSerializer
     permission_classes = [EstAuthentifie]
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = Mission.objects.select_related(
+            "alerte", "ambulance", "medecin_regulateur", "hopital_recepteur"
+        ).order_by("-date_creation")
+
+        if not user.is_authenticated:
+            return qs.none()
+
+        if user.role == Utilisateur.Role.EQUIPE_INTERVENTION:
+            amb = Ambulance.objects.filter(ambulancier=user).first()
+            if not amb:
+                amb = Ambulance.objects.filter(matricule=user.username).first()
+            if amb:
+                return qs.filter(ambulance=amb)
+        elif user.role == Utilisateur.Role.USAGER:
+            return qs.filter(alerte__declencheur=user)
+
+        return qs
 
     @action(detail=False, methods=["post"], permission_classes=[EstRegulateurOuAdmin])
     def envoyer(self, request):
@@ -333,6 +350,8 @@ class MissionViewSet(viewsets.ModelViewSet):
         # Trouver l'ambulance assignée à cet ambulancier
         ambulance = Ambulance.objects.filter(ambulancier=request.user).first()
         if not ambulance:
+            ambulance = Ambulance.objects.filter(matricule=request.user.username).first()
+        if not ambulance:
             return Response({"detail": "Aucune ambulance assignée."}, status=status.HTTP_404_NOT_FOUND)
         
         mission = Mission.objects.filter(
@@ -361,6 +380,9 @@ class MissionViewSet(viewsets.ModelViewSet):
             mission.date_fin = timezone.now()
             mission.ambulance.statut = Ambulance.Statut.DISPONIBLE
             mission.ambulance.save(update_fields=["statut"])
+            if mission.alerte:
+                mission.alerte.statut = Alerte.StatutAlerte.RESOLUE
+                mission.alerte.save(update_fields=["statut"])
         elif nouveau_statut == "en_panne":
             mission.ambulance.statut = Ambulance.Statut.EN_PANNE
             mission.ambulance.save(update_fields=["statut"])
