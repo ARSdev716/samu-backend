@@ -16,9 +16,9 @@
     }
   </script>
 
-  <!-- Leaflet (tuiles sans clé API) -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- MapLibre GL (Open-Source, gratuit, aucune clé API requise) -->
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"/>
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 
   <!-- FontAwesome -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
@@ -574,61 +574,117 @@ function gotoTab(id) {
   });
   $('view-'+id).classList.remove('hidden'); $('view-'+id).classList.add('flex');
   $('tab-'+id).className = 'tab-btn on';
-  if (id==='supervision' && map) setTimeout(()=>map.invalidateSize(),50);
+  if (id==='supervision' && map) setTimeout(()=>map.resize(),100);
   if (id==='parc') renderParc();
   if (id==='historique') renderHistory();
 }
 
-// ── Map ──────────────────────────────────────────────────────────────────────
+// ── Map (MapLibre GL JS — 100% libre, aucune clé API requise) ──────────────────
 let map=null, mks={};
+
 function initMap() {
   if (map) return;
-  map = L.map('map',{zoomControl:false}).setView([3.8480,11.5021],12);
-  L.control.zoom({position:'bottomright'}).addTo(map);
-  // CartoDB Positron — gratuit, aucune clé API requise
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
-    attribution:'© OpenStreetMap © CARTO', subdomains:'abcd', maxZoom:19
-  }).addTo(map);
-  updateMapMarkers();
+
+  map = new maplibregl.Map({
+    container: 'map',
+    style: {
+      version: 8,
+      sources: {
+        'osm-tiles': {
+          type: 'raster',
+          tiles: [
+            'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
+            'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
+            'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png'
+          ],
+          tileSize: 256,
+          attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>'
+        }
+      },
+      layers: [
+        {
+          id: 'osm-tiles-layer',
+          type: 'raster',
+          source: 'osm-tiles',
+          minzoom: 0,
+          maxzoom: 19
+        }
+      ]
+    },
+    center: [11.5021, 3.8480], // Yaoundé: [longitude, latitude]
+    zoom: 12
+  });
+
+  map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
+
+  map.on('load', () => {
+    updateMapMarkers();
+  });
 }
 
-const pin=(color,ico,pulse=false)=>L.divIcon({
-  html:`<div class="pin-wrap${pulse?' pin-pulse':''}"><div class="pin pin-${color}"><i class="fas ${ico}"></i></div></div>`,
-  className:'',iconSize:[34,34],iconAnchor:[17,34],popupAnchor:[0,-38]
-});
-const PINS = {
-  sos_new:  pin('red',   'fa-exclamation',   true),
-  sos_pris: pin('orange','fa-person-running'),
-  amb_ok:   pin('blue',  'fa-truck-medical'),
-  amb_mis:  pin('orange','fa-truck-fast'),
-  amb_off:  pin('slate', 'fa-truck'),
-  hop:      pin('green', 'fa-hospital-symbol'),
-};
+function createPinEl(color, ico, pulse=false) {
+  const el = document.createElement('div');
+  el.className = 'cursor-pointer';
+  el.style.width = '34px';
+  el.style.height = '34px';
+  el.innerHTML = `<div class="pin-wrap${pulse?' pin-pulse':''}"><div class="pin pin-${color}"><i class="fas ${ico}"></i></div></div>`;
+  return el;
+}
 
 function updateMapMarkers() {
-  Object.values(mks).forEach(m=>map&&map.removeLayer(m)); mks={};
-  if(!map) return;
-  alertes.forEach(a=>{
-    if(!a.latitude) return;
-    const ic=a.statut==='en_attente'?PINS.sos_new:PINS.sos_pris;
-    const m=L.marker([a.latitude,a.longitude],{icon:ic}).addTo(map);
-    m.bindPopup(`<b>SOS #${String(a.id_suivi).substring(0,8).toUpperCase()}</b><br><span style="font-size:12px;color:#64748b">${a.adresse_manuelle||'GPS'} — ${a.gravite||'?'}</span>`);
-    m.on('click',()=>selectAlerte(a.id,false));
-    mks['s'+a.id]=m;
+  Object.values(mks).forEach(m => m.remove());
+  mks = {};
+  if (!map) return;
+
+  alertes.forEach(a => {
+    if (!a.latitude || !a.longitude) return;
+    const isNew = a.statut === 'en_attente';
+    const el = createPinEl(isNew ? 'red' : 'orange', isNew ? 'fa-exclamation' : 'fa-person-running', isNew);
+
+    el.addEventListener('click', () => selectAlerte(a.id, false));
+
+    const popHtml = `<div style="padding:4px;"><b>SOS #${String(a.id_suivi).substring(0,8).toUpperCase()}</b><br><span style="font-size:12px;color:#64748b">${a.adresse_manuelle || 'GPS'} — ${a.gravite || '?'}</span></div>`;
+    const popup = new maplibregl.Popup({ offset: [0, -32], closeButton: false }).setHTML(popHtml);
+
+    const m = new maplibregl.Marker({ element: el, anchor: 'bottom' })
+      .setLngLat([a.longitude, a.latitude])
+      .setPopup(popup)
+      .addTo(map);
+
+    mks['s' + a.id] = m;
   });
-  ambulances.forEach(a=>{
-    if(!a.latitude) return;
-    const ic=a.statut==='disponible'?PINS.amb_ok:a.statut==='en_mission'?PINS.amb_mis:PINS.amb_off;
-    const m=L.marker([a.latitude,a.longitude],{icon:ic}).addTo(map);
+
+  ambulances.forEach(a => {
+    if (!a.latitude || !a.longitude) return;
+    const col = a.statut === 'disponible' ? 'blue' : a.statut === 'en_mission' ? 'orange' : 'slate';
+    const ico = a.statut === 'disponible' ? 'fa-truck-medical' : a.statut === 'en_mission' ? 'fa-truck-fast' : 'fa-truck';
+    const el = createPinEl(col, ico, false);
+
     const btnAssign = a.statut === 'disponible' ? `<div style="margin-top:6px;"><button onclick="assignerCetteAmbulance(${a.id})" style="background:#1d4ed8;color:#fff;border:none;border-radius:6px;padding:4px 8px;font-size:11px;font-weight:700;cursor:pointer;width:100%;">Affecter cette unité</button></div>` : '';
-    m.bindPopup(`<b>${a.matricule}</b><br><span style="font-size:12px;color:#64748b">${a.statut.replace('_',' ')}</span>${btnAssign}`);
-    mks['a'+a.id]=m;
+    const popHtml = `<div style="padding:4px;"><b>${a.matricule}</b><br><span style="font-size:12px;color:#64748b">${a.statut.replace('_',' ')}</span>${btnAssign}</div>`;
+    const popup = new maplibregl.Popup({ offset: [0, -32] }).setHTML(popHtml);
+
+    const m = new maplibregl.Marker({ element: el, anchor: 'bottom' })
+      .setLngLat([a.longitude, a.latitude])
+      .setPopup(popup)
+      .addTo(map);
+
+    mks['a' + a.id] = m;
   });
-  hopitaux.forEach(h=>{
-    if(!h.latitude) return;
-    const m=L.marker([h.latitude,h.longitude],{icon:PINS.hop}).addTo(map);
-    m.bindPopup(`<b>${h.nom}</b><br><span style="font-size:12px;color:#16a34a">Hôpital — ${h.capacite_lits} lits</span>`);
-    mks['h'+h.id]=m;
+
+  hopitaux.forEach(h => {
+    if (!h.latitude || !h.longitude) return;
+    const el = createPinEl('green', 'fa-hospital-symbol', false);
+
+    const popHtml = `<div style="padding:4px;"><b>${h.nom}</b><br><span style="font-size:12px;color:#16a34a">Hôpital — ${h.capacite_lits || 0} lits</span></div>`;
+    const popup = new maplibregl.Popup({ offset: [0, -32] }).setHTML(popHtml);
+
+    const m = new maplibregl.Marker({ element: el, anchor: 'bottom' })
+      .setLngLat([h.longitude, h.latitude])
+      .setPopup(popup)
+      .addTo(map);
+
+    mks['h' + h.id] = m;
   });
 }
 
@@ -698,7 +754,7 @@ const SSTAT={en_route:'En route',arrive:'Sur les lieux',prise_en_charge:'Prise e
 function selectAlerte(id, pan=false) {
   const a=alertes.find(x=>x.id==id); if(!a) return;
   selId=id;
-  if(pan && a.latitude && map) map.flyTo([a.latitude,a.longitude],16,{duration:1});
+  if(pan && a.latitude && a.longitude && map) map.flyTo({ center: [a.longitude, a.latitude], zoom: 16, duration: 1000 });
 
   $('consoleEmpty').classList.add('hidden');
   $('consoleActive').classList.remove('hidden');
@@ -928,7 +984,7 @@ function renderParc(){
     </div>`;
   }).join('');
 }
-function voirCarte(lat,lon){ gotoTab('supervision'); setTimeout(()=>map&&map.flyTo([lat,lon],16,{duration:1}),100); }
+function voirCarte(lat,lon){ gotoTab('supervision'); setTimeout(()=>{ if(map) map.flyTo({ center: [lon, lat], zoom: 16, duration: 1000 }); }, 150); }
 
 // ── Historique ────────────────────────────────────────────────────────────────
 function renderHistory(){
