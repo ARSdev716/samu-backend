@@ -168,6 +168,18 @@ class SosViewSet(viewsets.GenericViewSet):
     permission_classes = [AccesSosPublic]
     lookup_field = "id_suivi"
 
+    def get_object(self):
+        lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
+        lookup_value = self.kwargs[lookup_url_kwarg]
+        try:
+            return Alerte.objects.get(id=int(lookup_value))
+        except (ValueError, TypeError, Alerte.DoesNotExist):
+            try:
+                return Alerte.objects.get(id_suivi=lookup_value)
+            except Exception:
+                from rest_framework.exceptions import NotFound
+                raise NotFound("Alerte introuvable.")
+
     def create(self, request):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)

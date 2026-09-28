@@ -269,9 +269,15 @@
 
           <!-- Résumé alerte -->
           <div class="bg-red-50 border border-red-100 rounded-xl p-3">
-            <div class="flex justify-between items-center mb-1.5">
+            <div class="flex justify-between items-center mb-1">
               <span class="text-[10px] text-slate-500 font-bold uppercase tracking-wide">Urgence sélectionnée</span>
-              <span id="cSosId" class="text-xs font-mono font-bold text-brand-red bg-red-100 px-2 py-0.5 rounded">#—</span>
+              <span id="cSosId" class="text-xs font-mono font-bold text-brand-red bg-red-100 px-2 py-0.5 rounded">Alerte #—</span>
+            </div>
+            <div class="text-[11px] font-mono text-slate-700 bg-white border border-red-200 rounded-lg px-2 py-1 mb-2 flex items-center justify-between">
+              <span id="cSosUuid" class="truncate font-semibold text-brand-blue select-all">—</span>
+              <button onclick="copierUuid()" type="button" title="Copier l'UUID" class="text-slate-400 hover:text-slate-700 ml-2 shrink-0">
+                <i class="fas fa-copy"></i>
+              </button>
             </div>
             <div class="flex items-start gap-1.5">
               <i class="fas fa-map-marker-alt text-brand-red text-sm mt-0.5 shrink-0"></i>
@@ -290,11 +296,11 @@
 
             <!-- Saisie manuelle ID alerte (comme admin Django) -->
             <div class="bg-yellow-50 border border-yellow-200 rounded-xl p-3 mb-2">
-              <label class="text-[10px] font-bold text-yellow-700 uppercase tracking-wide block mb-1">
-                <i class="fas fa-key mr-1"></i>ID Alerte (optionnel — pré-rempli)
+              <label class="text-[10px] font-bold text-yellow-800 uppercase tracking-wide block mb-1">
+                <i class="fas fa-link mr-1"></i>ID ou Code de l'Alerte (ex: 3 ou UUID complet)
               </label>
-              <input id="alerteIdInput" type="number" placeholder="ID numérique de l'alerte"
-                class="w-full border border-yellow-300 bg-white rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 font-mono">
+              <input id="alerteIdInput" type="text" placeholder="Entrez le n° d'alerte (ex: 3) ou l'ID de suivi UUID"
+                class="w-full border border-yellow-300 bg-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 font-mono text-slate-800">
             </div>
 
             <!-- Sélection ambulance -->
@@ -722,9 +728,9 @@ function renderAlertList() {
     return;
   }
   el.innerHTML = alertes.map(a=>{
-    const isNew=a.statut==='en_attente', sel=selId===a.id;
-    const time=new Date(a.date_creation).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
-    const gc=GCSS[a.gravite]||GCSS.P2;
+    const isNew = a.statut === 'en_attente', sel = selId === a.id;
+    const time = new Date(a.date_creation).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+    const gc = GCSS[a.gravite] || GCSS.P2;
     return `<div onclick="selectAlerte(${a.id},true)"
       class="cursor-pointer p-3 rounded-xl border transition-all ${sel?'bg-blue-50 border-brand-blue ring-1 ring-brand-blue':'bg-white border-slate-200 hover:border-slate-300'}">
       <div class="flex items-start gap-2.5">
@@ -732,15 +738,17 @@ function renderAlertList() {
           <i class="fas ${isNew?'fa-exclamation-circle':'fa-spinner fa-spin'} text-sm"></i>
         </div>
         <div class="flex-1 min-w-0">
-          <div class="flex justify-between mb-0.5">
-            <span class="font-bold text-slate-800 text-sm font-mono">#${String(a.id_suivi).substring(0,8).toUpperCase()}</span>
-            <span class="text-xs text-slate-400">${time}</span>
+          <div class="flex justify-between items-center mb-0.5">
+            <span class="font-bold text-slate-800 text-sm">Alerte #${a.id}</span>
+            <span class="text-xs text-slate-400 font-medium">${time}</span>
           </div>
-          <p class="text-xs text-slate-500 line-clamp-1 mb-1">${a.adresse_manuelle||'Position GPS transmise'}</p>
-          <div class="flex gap-1.5">
-            <span class="text-[10px] font-bold px-1.5 py-0.5 rounded ${gc}">${a.gravite||'?'}</span>
-            <span class="text-[10px] text-slate-400 capitalize">${a.statut.replace('_',' ')}</span>
-            <span class="text-[10px] text-slate-300 ml-auto">ID:${a.id}</span>
+          <div class="text-[11px] font-mono text-brand-blue truncate bg-blue-50/80 px-1.5 py-0.5 rounded border border-blue-100 my-1" title="${a.id_suivi}">
+            <i class="fas fa-fingerprint mr-1 text-slate-400"></i>${a.id_suivi}
+          </div>
+          <p class="text-xs text-slate-500 line-clamp-1 mb-1">${a.adresse_manuelle || 'Coordonnées GPS transmises'}</p>
+          <div class="flex items-center gap-1.5">
+            <span class="text-[10px] font-bold px-1.5 py-0.5 rounded ${gc}">${a.gravite || '?'}</span>
+            <span class="text-[10px] text-slate-500 font-medium capitalize">${a.statut.replace('_',' ')}</span>
           </div>
         </div>
       </div>
@@ -751,6 +759,14 @@ function renderAlertList() {
 // ── Sélection alerte ──────────────────────────────────────────────────────────
 const SSTAT={en_route:'En route',arrive:'Sur les lieux',prise_en_charge:'Prise en charge',transport:'Vers l\'hôpital',termine:'Terminée',en_panne:'En panne'};
 
+function copierUuid() {
+  const u = $('cSosUuid')?.textContent;
+  if (u && u !== '—') {
+    navigator.clipboard.writeText(u);
+    toast('ID de suivi copié !', 'ok');
+  }
+}
+
 function selectAlerte(id, pan=false) {
   const a=alertes.find(x=>x.id==id); if(!a) return;
   selId=id;
@@ -758,9 +774,10 @@ function selectAlerte(id, pan=false) {
 
   $('consoleEmpty').classList.add('hidden');
   $('consoleActive').classList.remove('hidden');
-  $('cSosId').textContent='#'+String(a.id_suivi).substring(0,8).toUpperCase();
-  $('cLoc').textContent=a.adresse_manuelle||'Coordonnées GPS transmises';
-  $('alerteIdInput').value=a.id;  // pré-rempli automatiquement
+  $('cSosId').textContent = 'Alerte #' + a.id;
+  if ($('cSosUuid')) $('cSosUuid').textContent = a.id_suivi;
+  $('cLoc').textContent = a.adresse_manuelle || 'Coordonnées GPS transmises';
+  $('alerteIdInput').value = a.id;  // pré-rempli automatiquement
 
   const gText={'P1':'P1 — Urgence vitale','P2':'P2 — Urgence relative','P3':'P3 — Non urgent'}[a.gravite]||'?';
   const gc=GCSS[a.gravite]||GCSS.P2;
