@@ -34,8 +34,8 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-# En développement, l'app Expo tourne sur un port local différent : on ouvre le CORS.
-CORS_ALLOW_ALL_ORIGINS = DEBUG
+# L'app mobile Expo et le portail web ont besoin du CORS en prod et en dev.
+CORS_ALLOW_ALL_ORIGINS = True
 
 ROOT_URLCONF = "ars_backend.urls"
 

@@ -1,771 +1,685 @@
-{% load static %}
 <!DOCTYPE html>
-<html lang="fr" class="">
+<html lang="fr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SAMU 119 — Portail de Régulation</title>
+  <title>SAMU 119 — Portail Régulateur</title>
+
+  <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
       darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            samu: {
-              red:    '#DC2626',
-              blue:   '#1D4ED8',
-              navy:   '#0F172A',
-              dark:   '#1E293B',
-              panel:  '#F8FAFC',
-              border: '#E2E8F0',
-            }
-          },
-          fontFamily: { sans: ['Inter','system-ui','sans-serif'] }
-        }
-      }
+      theme: { extend: { colors: {
+        brand: { red:'#DC2626', blue:'#1D4ED8', navy:'#0F172A', dark:'#1E293B' }
+      }}}
     }
   </script>
+
+  <!-- Leaflet (tuiles sans clé API) -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- FontAwesome -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-    * { box-sizing: border-box; }
-    body { font-family: 'Inter', sans-serif; }
+    *, *::before, *::after { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, sans-serif; }
 
-    /* Map */
-    #map { position: absolute; inset: 0; }
+    /* ---- Map ---- */
+    #map { position: absolute; inset: 0; width: 100%; height: 100%; }
 
-    /* Pins */
-    .pin { width:36px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 3px 12px rgba(0,0,0,.3);border:2px solid rgba(255,255,255,.8); }
-    .pin i { transform:rotate(45deg);font-size:14px;color:#fff; }
+    /* ---- Pins ---- */
+    .pin-wrap { position:relative; width:34px; height:34px; }
+    .pin {
+      width:34px; height:34px; border-radius:50% 50% 50% 0;
+      transform:rotate(-45deg); display:flex; align-items:center;
+      justify-content:center; box-shadow:0 3px 10px rgba(0,0,0,.35);
+      border:2px solid rgba(255,255,255,.9);
+    }
+    .pin i { transform:rotate(45deg); color:#fff; font-size:13px; }
     .pin-red    { background:#DC2626; }
     .pin-orange { background:#EA580C; }
     .pin-blue   { background:#2563EB; }
     .pin-green  { background:#16A34A; }
-    .pin-gray   { background:#64748B; }
-    @keyframes pulse-ring { 0%{transform:scale(.8);opacity:1} 100%{transform:scale(2.2);opacity:0} }
-    .pin-pulse::before { content:'';position:absolute;width:36px;height:36px;border-radius:50%;border:3px solid #DC2626;animation:pulse-ring 1.5s ease-out infinite; }
-    .pin-wrapper { position:relative;width:36px;height:36px; }
+    .pin-slate  { background:#64748B; }
+    @keyframes pulse { 0%{transform:scale(.85);opacity:1} 100%{transform:scale(2);opacity:0} }
+    .pin-pulse::before {
+      content:''; position:absolute; inset:0; border-radius:50%;
+      border:3px solid #DC2626; animation:pulse 1.6s ease-out infinite;
+    }
 
-    /* Leaflet popup */
-    .leaflet-popup-content-wrapper { border-radius:10px !important; box-shadow:0 8px 24px rgba(0,0,0,.15) !important; }
-    .leaflet-popup-content { margin: 10px 14px !important; }
+    /* ---- Scrollbar ---- */
+    .slim::-webkit-scrollbar { width:4px; }
+    .slim::-webkit-scrollbar-thumb { background:#CBD5E1; border-radius:2px; }
 
-    /* Scrollbar */
-    .thin-scroll::-webkit-scrollbar { width:4px; }
-    .thin-scroll::-webkit-scrollbar-track { background:transparent; }
-    .thin-scroll::-webkit-scrollbar-thumb { background:#CBD5E1;border-radius:2px; }
+    /* ---- Tabs ---- */
+    .tab-btn { transition:all .2s; padding:18px 16px; border-bottom:3px solid transparent; font-size:.85rem; }
+    .tab-btn.on { color:#1D4ED8; border-bottom-color:#1D4ED8; font-weight:700; }
+    .tab-btn:not(.on) { color:#64748B; }
+    .tab-btn:not(.on):hover { color:#334155; }
 
-    /* Pulse dot */
+    /* ---- Toast ---- */
+    #toasts { position:fixed; bottom:20px; right:20px; z-index:9999; display:flex; flex-direction:column; gap:8px; }
+    .toast {
+      display:flex; align-items:center; gap:10px; padding:11px 16px;
+      border-radius:10px; font-size:.85rem; font-weight:500; min-width:280px;
+      box-shadow:0 6px 20px rgba(0,0,0,.15);
+      animation: tin .3s ease;
+    }
+    @keyframes tin { from{opacity:0;transform:translateX(60px)} to{opacity:1;transform:none} }
+    .toast-ok  { background:#DCFCE7; color:#15803D; border:1px solid #86EFAC; }
+    .toast-err { background:#FEE2E2; color:#B91C1C; border:1px solid #FCA5A5; }
+    .toast-inf { background:#DBEAFE; color:#1D4ED8; border:1px solid #93C5FD; }
+
+    /* ---- Modal ---- */
+    .modal-bg { display:none; position:fixed; inset:0; background:rgba(15,23,42,.65);
+      backdrop-filter:blur(3px); z-index:1000; align-items:center; justify-content:center; }
+    .modal-bg.open { display:flex; }
+
+    /* ---- Blink ---- */
     @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
-    .blink { animation:blink 1.5s infinite; }
+    .blink { animation:blink 1.4s infinite; }
 
-    /* Skeleton */
-    @keyframes shimmer { 0%{background-position:-400px 0} 100%{background-position:400px 0} }
-    .skeleton { background:linear-gradient(90deg,#f1f5f9 25%,#e2e8f0 50%,#f1f5f9 75%);background-size:800px 100%;animation:shimmer 1.4s infinite; border-radius:6px; }
-
-    /* Toast */
-    #toast-container { position:fixed;bottom:24px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:8px; }
-    .toast { display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:10px;font-size:14px;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,.15);animation:slideIn .3s ease; min-width:280px; }
-    @keyframes slideIn { from{transform:translateX(100%);opacity:0} to{transform:translateX(0);opacity:1} }
-    .toast-success { background:#DCFCE7;color:#15803D;border:1px solid #86EFAC; }
-    .toast-error   { background:#FEE2E2;color:#B91C1C;border:1px solid #FCA5A5; }
-    .toast-info    { background:#DBEAFE;color:#1D4ED8;border:1px solid #93C5FD; }
-
-    /* Modal backdrop */
-    .modal-backdrop { position:fixed;inset:0;background:rgba(15,23,42,.6);backdrop-filter:blur(4px);z-index:1000;display:none;align-items:center;justify-content:center; }
-    .modal-backdrop.open { display:flex; }
-
-    /* Tabs */
-    .nav-tab { transition:all .2s;border-bottom:2px solid transparent;padding:18px 0; }
-    .nav-tab.active { color:#1D4ED8;border-bottom-color:#1D4ED8;font-weight:600; }
-    .nav-tab:not(.active) { color:#64748B; }
-    .nav-tab:not(.active):hover { color:#334155; }
+    /* ---- Login bg gradient ---- */
+    #login-overlay { background: linear-gradient(135deg, #0F172A 0%, #1E293B 50%, #1D4ED8 100%); }
   </style>
 </head>
-<body class="h-screen w-screen overflow-hidden flex flex-col bg-samu-panel text-slate-700 antialiased">
 
-<!-- ══════════════════════════════════════════════════════
+<body class="h-screen w-screen overflow-hidden flex flex-col bg-slate-100 text-slate-700">
+
+<!-- ═══════════════════════════════════════════════
      LOGIN OVERLAY
-═══════════════════════════════════════════════════════ -->
-<div id="login-overlay" class="fixed inset-0 z-[2000] bg-gradient-to-br from-samu-navy via-samu-dark to-samu-blue flex items-center justify-center">
+════════════════════════════════════════════════ -->
+<div id="login-overlay" class="fixed inset-0 z-[2000] flex items-center justify-center">
   <div class="w-full max-w-md mx-4">
     <!-- Logo -->
     <div class="text-center mb-8">
-      <div class="inline-flex items-center justify-center w-16 h-16 bg-samu-red rounded-2xl shadow-2xl mb-4">
+      <div class="inline-flex items-center justify-center w-16 h-16 bg-brand-red rounded-2xl shadow-2xl mb-4">
         <i class="fas fa-heartbeat text-white text-2xl"></i>
       </div>
-      <h1 class="text-3xl font-bold text-white">SAMU <span class="text-samu-red">119</span></h1>
-      <p class="text-slate-400 text-sm mt-1 uppercase tracking-widest font-medium">Portail de Régulation Médicale</p>
+      <h1 class="text-3xl font-bold text-white">SAMU <span class="text-red-400">119</span></h1>
+      <p class="text-slate-400 text-sm mt-1 tracking-wider uppercase font-medium">Portail de Régulation Médicale</p>
     </div>
 
-    <!-- Card -->
-    <div class="bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-8 shadow-2xl">
-      <h2 class="text-white font-semibold text-lg mb-6 text-center">Authentification Régulateur</h2>
-      
-      <div id="login-error" class="hidden mb-4 px-4 py-3 bg-red-500/20 border border-red-400/40 rounded-lg text-red-300 text-sm font-medium"></div>
+    <div class="bg-white/10 backdrop-blur border border-white/20 rounded-2xl p-8 shadow-2xl">
+      <div id="login-error" class="hidden mb-4 px-4 py-3 bg-red-500/20 border border-red-400/40 rounded-lg text-red-300 text-sm font-medium text-center"></div>
 
       <div class="space-y-4">
         <div>
           <label class="block text-slate-300 text-xs font-semibold uppercase tracking-wide mb-1.5">Identifiant</label>
-          <input id="login-username" type="text" placeholder="Nom d'utilisateur"
-            class="w-full bg-white/10 border border-white/20 text-white placeholder-slate-400 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-samu-red focus:border-transparent transition"
-            onkeydown="if(event.key==='Enter') doLogin()">
+          <input id="lu" type="text" placeholder="Nom d'utilisateur"
+            class="w-full bg-white/10 border border-white/20 text-white placeholder-slate-400 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-red-400 transition"
+            onkeydown="if(event.key==='Enter')doLogin()">
         </div>
         <div>
           <label class="block text-slate-300 text-xs font-semibold uppercase tracking-wide mb-1.5">Mot de passe</label>
           <div class="relative">
-            <input id="login-password" type="password" placeholder="••••••••"
-              class="w-full bg-white/10 border border-white/20 text-white placeholder-slate-400 rounded-xl px-4 py-3 pr-12 focus:outline-none focus:ring-2 focus:ring-samu-red focus:border-transparent transition"
-              onkeydown="if(event.key==='Enter') doLogin()">
+            <input id="lp" type="password" placeholder="••••••••"
+              class="w-full bg-white/10 border border-white/20 text-white placeholder-slate-400 rounded-xl px-4 py-3 pr-12 outline-none focus:ring-2 focus:ring-red-400 transition"
+              onkeydown="if(event.key==='Enter')doLogin()">
             <button onclick="togglePwd()" class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white">
-              <i id="eye-icon" class="fas fa-eye text-sm"></i>
+              <i id="eyeico" class="fas fa-eye text-sm"></i>
             </button>
           </div>
         </div>
-        <button id="login-btn" onclick="doLogin()"
-          class="w-full bg-samu-red hover:bg-red-700 text-white font-bold py-3.5 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 mt-2">
-          <i class="fas fa-shield-alt"></i>
-          <span>Accéder au Portail</span>
+        <button id="loginBtn" onclick="doLogin()"
+          class="w-full bg-brand-red hover:bg-red-700 text-white font-bold py-3.5 rounded-xl shadow-lg transition flex items-center justify-center gap-2 mt-2">
+          <i class="fas fa-shield-alt"></i><span>Accéder au Portail</span>
         </button>
       </div>
+      <p class="text-center text-slate-400 text-xs mt-5 leading-relaxed">
+        Accès réservé aux <strong class="text-white">médecins régulateurs</strong> et administrateurs<br>
+        <span class="text-slate-500">Compte test : <code class="text-yellow-300">regulateur1</code> / <code class="text-yellow-300">ArsSecure2026!</code></span>
+      </p>
     </div>
-    <p class="text-center text-slate-500 text-xs mt-4">Accès réservé aux médecins régulateurs et administrateurs</p>
   </div>
 </div>
 
-<!-- ══════════════════════════════════════════════════════
+<!-- ═══════════════════════════════════════════════
      HEADER
-═══════════════════════════════════════════════════════ -->
-<header class="h-16 bg-samu-navy border-b border-slate-700 flex items-center justify-between px-6 shrink-0 z-20 shadow-xl">
-  <!-- Brand + Tabs -->
-  <div class="flex items-center gap-8">
-    <div class="flex items-center gap-3">
-      <div class="w-8 h-8 bg-samu-red rounded-lg flex items-center justify-center">
-        <i class="fas fa-heartbeat text-white text-sm"></i>
+════════════════════════════════════════════════ -->
+<header class="h-14 bg-brand-navy border-b border-slate-700 flex items-center justify-between px-5 shrink-0 z-20 shadow-xl">
+  <div class="flex items-center gap-6">
+    <!-- Brand -->
+    <div class="flex items-center gap-2.5">
+      <div class="w-7 h-7 bg-brand-red rounded-lg flex items-center justify-center">
+        <i class="fas fa-heartbeat text-white text-xs"></i>
       </div>
-      <div>
-        <span class="font-bold text-white text-sm leading-none">SAMU <span class="text-samu-red">119</span></span>
-        <p class="text-[10px] text-slate-400 uppercase tracking-widest font-medium">Régulation</p>
+      <div class="leading-none">
+        <span class="font-bold text-white text-sm">SAMU <span class="text-red-400">119</span></span>
+        <p class="text-[9px] text-slate-400 uppercase tracking-widest">Régulation</p>
       </div>
     </div>
-    <nav class="hidden md:flex gap-1 h-16">
-      <button onclick="switchTab('supervision')" id="tab-supervision" class="nav-tab active text-sm px-4">
+    <!-- Nav tabs -->
+    <nav class="flex h-14">
+      <button onclick="gotoTab('supervision')" id="tab-supervision" class="tab-btn on">
         <i class="fas fa-map mr-1.5"></i>Supervision
       </button>
-      <button onclick="switchTab('parc')" id="tab-parc" class="nav-tab text-sm px-4">
+      <button onclick="gotoTab('parc')" id="tab-parc" class="tab-btn">
         <i class="fas fa-truck-medical mr-1.5"></i>Parc Ambulancier
       </button>
-      <button onclick="switchTab('historique')" id="tab-historique" class="nav-tab text-sm px-4">
+      <button onclick="gotoTab('historique')" id="tab-historique" class="tab-btn">
         <i class="fas fa-clipboard-list mr-1.5"></i>Historique
       </button>
     </nav>
   </div>
 
-  <!-- Right Controls -->
-  <div class="flex items-center gap-4">
-    <!-- Live dot -->
-    <div class="flex items-center gap-2 text-xs text-green-400 font-medium">
-      <div class="w-2 h-2 rounded-full bg-green-400 blink"></div>
-      <span>En ligne</span>
+  <div class="flex items-center gap-3">
+    <div class="flex items-center gap-1.5 text-xs text-green-400 font-medium">
+      <div class="w-2 h-2 rounded-full bg-green-400 blink"></div><span class="hidden sm:inline">En ligne</span>
     </div>
-    <!-- Clock -->
-    <div id="clock" class="text-white font-semibold tabular-nums text-sm w-20 text-right"></div>
-    <!-- Theme toggle -->
-    <button onclick="document.documentElement.classList.toggle('dark')" class="w-8 h-8 rounded-lg bg-slate-700 flex items-center justify-center text-slate-300 hover:bg-slate-600 transition">
-      <i class="fas fa-moon text-xs"></i>
-    </button>
-    <!-- User -->
-    <div class="flex items-center gap-2.5">
+    <span id="clock" class="text-white font-semibold tabular-nums text-sm w-20 text-right"></span>
+    <div class="flex items-center gap-2">
       <div class="text-right hidden sm:block">
-        <p id="header-username" class="text-sm font-semibold text-white leading-none">Régulateur</p>
-        <p class="text-xs text-slate-400 font-medium">Médecin régulateur</p>
+        <p id="hdrUser" class="text-sm font-bold text-white leading-none">—</p>
+        <p class="text-[10px] text-slate-400">Médecin régulateur</p>
       </div>
-      <div class="w-9 h-9 bg-samu-red text-white rounded-full flex items-center justify-center font-bold text-sm shadow">
+      <div class="w-8 h-8 bg-brand-red rounded-full flex items-center justify-center text-white text-sm font-bold">
         <i class="fas fa-user-md"></i>
       </div>
-      <button onclick="logout()" class="w-8 h-8 rounded-lg bg-slate-700 flex items-center justify-center text-slate-300 hover:bg-red-700 hover:text-white transition" title="Déconnexion">
+      <button onclick="logout()" title="Déconnexion"
+        class="w-8 h-8 bg-slate-700 rounded-lg flex items-center justify-center text-slate-300 hover:bg-red-600 hover:text-white transition">
         <i class="fas fa-sign-out-alt text-xs"></i>
       </button>
     </div>
   </div>
 </header>
 
-<!-- ══════════════════════════════════════════════════════
+<!-- ═══════════════════════════════════════════════
      WORKSPACE
-═══════════════════════════════════════════════════════ -->
+════════════════════════════════════════════════ -->
 <div class="flex-1 relative overflow-hidden">
 
-  <!-- ╔══ TAB: SUPERVISION ══╗ -->
+  <!-- ▌TAB : SUPERVISION ▐ -->
   <div id="view-supervision" class="absolute inset-0 flex">
 
-    <!-- MAP -->
+    <!-- Carte -->
     <div class="flex-1 relative">
       <div id="map"></div>
 
-      <!-- KPI chips (floating) -->
-      <div class="absolute top-4 left-4 z-[400] flex gap-3 pointer-events-none">
-        <div class="bg-white/95 backdrop-blur-sm px-4 py-3 rounded-xl shadow-lg border border-slate-200 flex items-center gap-3 pointer-events-auto">
-          <div class="w-9 h-9 bg-red-50 rounded-full flex items-center justify-center text-samu-red">
-            <i class="fas fa-satellite-dish"></i>
+      <!-- KPIs flottants -->
+      <div class="absolute top-3 left-3 z-[500] flex flex-wrap gap-2 pointer-events-none">
+        <div class="bg-white/95 shadow px-3 py-2 rounded-xl flex items-center gap-2 pointer-events-auto border border-slate-200">
+          <div class="w-8 h-8 bg-red-50 rounded-full flex items-center justify-center text-brand-red">
+            <i class="fas fa-satellite-dish text-sm"></i>
           </div>
           <div>
-            <p class="text-[10px] text-slate-500 uppercase font-semibold tracking-wide">Alertes actives</p>
+            <p class="text-[10px] text-slate-500 uppercase font-semibold tracking-wide leading-none">Alertes</p>
             <p class="text-xl font-bold text-slate-800 leading-none" id="kpi-sos">—</p>
           </div>
         </div>
-        <div class="bg-white/95 backdrop-blur-sm px-4 py-3 rounded-xl shadow-lg border border-slate-200 flex items-center gap-3 pointer-events-auto">
-          <div class="w-9 h-9 bg-orange-50 rounded-full flex items-center justify-center text-orange-500">
-            <i class="fas fa-spinner fa-spin"></i>
+        <div class="bg-white/95 shadow px-3 py-2 rounded-xl flex items-center gap-2 pointer-events-auto border border-slate-200">
+          <div class="w-8 h-8 bg-orange-50 rounded-full flex items-center justify-center text-orange-500">
+            <i class="fas fa-spinner fa-spin text-sm"></i>
           </div>
           <div>
-            <p class="text-[10px] text-slate-500 uppercase font-semibold tracking-wide">Missions actives</p>
-            <p class="text-xl font-bold text-slate-800 leading-none" id="kpi-cours">—</p>
+            <p class="text-[10px] text-slate-500 uppercase font-semibold tracking-wide leading-none">Missions</p>
+            <p class="text-xl font-bold text-slate-800 leading-none" id="kpi-missions">—</p>
           </div>
         </div>
-        <div class="bg-white/95 backdrop-blur-sm px-4 py-3 rounded-xl shadow-lg border border-slate-200 flex items-center gap-3 pointer-events-auto">
-          <div class="w-9 h-9 bg-blue-50 rounded-full flex items-center justify-center text-samu-blue">
-            <i class="fas fa-truck-medical"></i>
+        <div class="bg-white/95 shadow px-3 py-2 rounded-xl flex items-center gap-2 pointer-events-auto border border-slate-200">
+          <div class="w-8 h-8 bg-blue-50 rounded-full flex items-center justify-center text-brand-blue">
+            <i class="fas fa-truck-medical text-sm"></i>
           </div>
           <div>
-            <p class="text-[10px] text-slate-500 uppercase font-semibold tracking-wide">Unités dispo</p>
+            <p class="text-[10px] text-slate-500 uppercase font-semibold tracking-wide leading-none">Dispos</p>
             <p class="text-xl font-bold text-slate-800 leading-none" id="kpi-amb">—</p>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- RIGHT SIDEBAR -->
-    <aside class="w-96 bg-white border-l border-samu-border flex flex-col shadow-[-4px_0_20px_rgba(0,0,0,.05)] z-10">
+    <!-- ▌Panneau latéral droit ▐ -->
+    <aside class="w-[380px] bg-white border-l border-slate-200 flex flex-col z-10 shadow-[-4px_0_20px_rgba(0,0,0,.05)]">
 
-      <!-- Flux d'incidents -->
-      <div class="flex items-center justify-between px-4 py-3 border-b border-samu-border">
+      <!-- En-tête liste alertes -->
+      <div class="flex items-center justify-between px-4 py-3 border-b border-slate-100">
         <h2 class="font-semibold text-slate-800 text-sm">Flux d'Incidents</h2>
-        <span class="text-[11px] bg-samu-red/10 text-samu-red font-bold px-2 py-0.5 rounded-full" id="alert-count">0 alerte(s)</span>
-      </div>
-      <div class="flex-1 overflow-y-auto thin-scroll p-3 space-y-2 bg-slate-50" id="alert-list">
-        <div class="text-sm text-slate-400 text-center py-8">Chargement...</div>
+        <span id="alertCount" class="text-[11px] bg-red-100 text-brand-red font-bold px-2.5 py-0.5 rounded-full">0</span>
       </div>
 
-      <!-- CONSOLE DE RÉGULATION -->
-      <div class="border-t border-samu-border bg-white flex flex-col">
-        <div class="px-4 py-2.5 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
-          <i class="fas fa-headset text-samu-blue text-xs"></i>
-          <h3 class="text-xs font-bold text-slate-700 uppercase tracking-widest">Console de Régulation</h3>
+      <!-- Liste des alertes -->
+      <div id="alertList" class="flex-1 overflow-y-auto slim p-3 space-y-2 bg-slate-50 min-h-0">
+        <p class="text-sm text-slate-400 text-center py-8">Chargement…</p>
+      </div>
+
+      <!-- Console de régulation -->
+      <div class="border-t border-slate-200 bg-white shrink-0 flex flex-col" style="max-height:70%">
+        <div class="px-4 py-2 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
+          <i class="fas fa-headset text-brand-blue text-xs"></i>
+          <h3 class="text-xs font-bold text-slate-600 uppercase tracking-widest">Console de Régulation</h3>
         </div>
 
-        <!-- Empty state -->
-        <div id="console-empty" class="p-8 flex flex-col items-center text-center">
-          <div class="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-300 mb-3">
+        <!-- État vide -->
+        <div id="consoleEmpty" class="py-8 px-4 flex flex-col items-center text-center">
+          <div class="w-11 h-11 bg-slate-100 rounded-full flex items-center justify-center text-slate-300 mb-2">
             <i class="fas fa-mouse-pointer text-xl"></i>
           </div>
-          <p class="text-sm text-slate-400 font-medium">Sélectionnez une alerte dans le flux pour démarrer la régulation.</p>
+          <p class="text-sm text-slate-400 font-medium">Cliquez sur une alerte pour lancer la régulation.</p>
         </div>
 
-        <!-- Active dispatch -->
-        <div id="console-active" class="hidden p-4 flex flex-col gap-3">
+        <!-- État actif -->
+        <div id="consoleActive" class="hidden overflow-y-auto slim p-4 flex flex-col gap-3">
 
-          <!-- Alerte summary -->
-          <div class="bg-red-50 border border-red-100 rounded-xl p-3.5">
-            <div class="flex items-center justify-between mb-2">
-              <span class="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">Urgence en cours</span>
-              <span class="text-xs font-mono font-bold text-samu-red bg-red-100 px-2 py-0.5 rounded" id="console-sos-id">#—</span>
+          <!-- Résumé alerte -->
+          <div class="bg-red-50 border border-red-100 rounded-xl p-3">
+            <div class="flex justify-between items-center mb-1.5">
+              <span class="text-[10px] text-slate-500 font-bold uppercase tracking-wide">Urgence sélectionnée</span>
+              <span id="cSosId" class="text-xs font-mono font-bold text-brand-red bg-red-100 px-2 py-0.5 rounded">#—</span>
             </div>
-            <div class="flex items-start gap-2 text-slate-700">
-              <i class="fas fa-map-marker-alt text-samu-red mt-0.5 text-sm shrink-0"></i>
-              <span class="text-sm leading-snug font-medium" id="console-loc">—</span>
+            <div class="flex items-start gap-1.5">
+              <i class="fas fa-map-marker-alt text-brand-red text-sm mt-0.5 shrink-0"></i>
+              <span id="cLoc" class="text-sm text-slate-700 font-medium leading-snug">—</span>
             </div>
-            <div class="flex items-center gap-3 mt-2.5 pt-2.5 border-t border-red-100">
-              <span class="text-xs font-semibold" id="console-gravite-badge">—</span>
-              <button onclick="openVictimModal()" class="text-xs font-semibold text-samu-blue hover:text-blue-700 ml-auto">
+            <div class="mt-2 flex items-center gap-2">
+              <span id="cGrav" class="text-xs font-bold px-2 py-0.5 rounded">—</span>
+              <button onclick="openVictimModal()" class="ml-auto text-xs text-brand-blue font-semibold hover:text-blue-700">
                 <i class="fas fa-edit mr-1"></i>Modifier victime
               </button>
             </div>
           </div>
 
-          <!-- === DISPATCH SECTION (shown for en_attente) === -->
-          <div id="dispatch-section">
-            <label class="block text-[11px] font-bold text-samu-blue uppercase tracking-widest mb-1.5">
-              <i class="fas fa-1 mr-1"></i>Sélectionner une Unité Disponible
-            </label>
+          <!-- DISPATCH (pour alertes en_attente) -->
+          <div id="dispatchSection">
 
-            <!-- Ambulance cards -->
-            <div id="ambulance-cards" class="space-y-2 max-h-48 overflow-y-auto thin-scroll mb-3">
-              <div class="text-xs text-slate-400 text-center py-4">Chargement des unités...</div>
+            <!-- Saisie manuelle ID alerte (comme admin Django) -->
+            <div class="bg-yellow-50 border border-yellow-200 rounded-xl p-3 mb-2">
+              <label class="text-[10px] font-bold text-yellow-700 uppercase tracking-wide block mb-1">
+                <i class="fas fa-key mr-1"></i>ID Alerte (optionnel — pré-rempli)
+              </label>
+              <input id="alerteIdInput" type="number" placeholder="ID numérique de l'alerte"
+                class="w-full border border-yellow-300 bg-white rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400 font-mono">
             </div>
 
-            <label class="block text-[11px] font-bold text-samu-blue uppercase tracking-widest mb-1.5">
-              <i class="fas fa-2 mr-1"></i>Hôpital Récepteur (optionnel)
+            <!-- Sélection ambulance -->
+            <label class="text-[10px] font-bold text-brand-blue uppercase tracking-wide block mb-1.5">
+              <i class="fas fa-truck-medical mr-1"></i>Sélectionner l'Ambulance
             </label>
-            <select id="hopital-select" class="w-full border border-slate-200 text-slate-700 text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-samu-blue mb-3 bg-white">
-              <option value="">Sélection automatique par l'ambulancier</option>
-            </select>
+            <div id="ambCards" class="space-y-1.5 max-h-40 overflow-y-auto slim mb-2">
+              <p class="text-xs text-slate-400 text-center py-3">Chargement…</p>
+            </div>
 
-            <button id="btn-deploy" onclick="deployerAmbulance()"
-              class="w-full bg-samu-red hover:bg-red-700 text-white font-bold py-3.5 rounded-xl shadow-md transition flex items-center justify-center gap-2">
-              <i class="fas fa-bolt"></i>
-              <span>DÉCLENCHER L'INTERVENTION</span>
+            <!-- Bouton déclencher -->
+            <button id="btnDeploy" onclick="deployAmbulance()"
+              class="w-full bg-brand-red hover:bg-red-700 text-white font-bold py-3 rounded-xl shadow transition flex items-center justify-center gap-2">
+              <i class="fas fa-bolt"></i><span>DÉCLENCHER L'INTERVENTION</span>
             </button>
-            <p class="text-[10px] text-slate-400 text-center mt-1.5">
-              <i class="fas fa-info-circle mr-1"></i>L'itinéraire optimal sera calculé automatiquement (UC_03 étape 8)
+            <p class="text-[10px] text-slate-400 text-center mt-1">
+              <i class="fas fa-info-circle mr-1"></i>L'itinéraire sera calculé automatiquement
             </p>
           </div>
 
-          <!-- === MISSION CONTROLS (shown for active missions) === -->
-          <div id="mission-section" class="hidden flex-col gap-2">
+          <!-- SUIVI MISSION ACTIVE (pour alertes déjà prises en charge) -->
+          <div id="missionSection" class="hidden flex-col gap-2">
             <div class="bg-blue-50 border border-blue-100 rounded-xl p-3">
-              <p class="text-[10px] font-bold text-samu-blue uppercase tracking-wide mb-2">Mission assignée</p>
+              <p class="text-[10px] font-bold text-brand-blue uppercase tracking-wide mb-1">Mission en cours</p>
               <div class="flex items-center gap-2">
-                <i class="fas fa-truck-medical text-samu-blue text-sm"></i>
-                <span class="font-semibold text-slate-800 text-sm" id="mission-amb-label">—</span>
+                <i class="fas fa-truck-medical text-brand-blue"></i>
+                <span id="mAmbLabel" class="font-semibold text-slate-800 text-sm">—</span>
               </div>
-              <div class="flex items-center gap-2 mt-1">
-                <i class="fas fa-circle-dot text-sm" id="mission-statut-icon"></i>
-                <span class="text-xs font-medium" id="mission-statut-label">—</span>
+              <div class="flex items-center gap-2 mt-0.5">
+                <i id="mStatIco" class="fas fa-circle-dot text-sm text-orange-500"></i>
+                <span id="mStatLabel" class="text-xs font-semibold text-orange-500">—</span>
               </div>
             </div>
-            <label class="text-[11px] font-bold text-orange-600 uppercase tracking-widest">Mettre à jour le statut</label>
+            <label class="text-[10px] font-bold text-orange-600 uppercase tracking-wide">Mettre à jour le statut</label>
             <div class="flex gap-2">
-              <select id="mission-status-select" class="flex-1 border border-slate-200 text-sm rounded-lg px-3 py-2 focus:ring-samu-blue focus:outline-none bg-white">
+              <select id="mStatusSel" class="flex-1 border border-slate-200 text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-blue bg-white">
                 <option value="en_route">En route</option>
                 <option value="arrive">Sur les lieux</option>
                 <option value="prise_en_charge">Prise en charge</option>
                 <option value="transport">Vers l'hôpital</option>
-                <option value="termine">Terminée (Clôturer)</option>
+                <option value="termine">Terminée ✓</option>
               </select>
-              <button onclick="updateMissionStatus()" class="bg-slate-800 hover:bg-slate-700 text-white px-4 rounded-lg transition">
+              <button onclick="updateMissionStatus()"
+                class="bg-slate-800 hover:bg-slate-700 text-white px-4 rounded-lg transition">
                 <i class="fas fa-check"></i>
               </button>
             </div>
           </div>
 
-        </div><!-- /console-active -->
+        </div>
       </div>
     </aside>
   </div>
-  <!-- ╚══ END SUPERVISION ══╝ -->
+  <!-- ▌fin SUPERVISION ▐ -->
 
-  <!-- ╔══ TAB: PARC AMBULANCIER ══╗ -->
-  <div id="view-parc" class="absolute inset-0 hidden flex-col bg-samu-panel overflow-auto">
-    <div class="bg-white border-b border-samu-border px-8 py-6">
-      <div class="flex items-center justify-between">
+  <!-- ▌TAB : PARC ▐ -->
+  <div id="view-parc" class="absolute inset-0 hidden flex-col bg-slate-100 overflow-auto">
+    <div class="bg-white border-b border-slate-200 px-8 py-5">
+      <div class="flex items-start justify-between flex-wrap gap-4">
         <div>
           <h2 class="text-2xl font-bold text-slate-800">Parc Ambulancier</h2>
-          <p class="text-slate-500 text-sm mt-1">État en temps réel de toutes les unités d'intervention SAMU</p>
+          <p class="text-slate-500 text-sm mt-0.5">État en temps réel des unités SAMU de Yaoundé</p>
         </div>
-        <!-- Quick stats -->
-        <div class="flex gap-4">
+        <div class="flex gap-5">
           <div class="text-center">
-            <p class="text-2xl font-bold text-green-600" id="parc-dispo-count">—</p>
-            <p class="text-xs text-slate-500 font-medium uppercase tracking-wide">Disponibles</p>
+            <p class="text-2xl font-bold text-green-600" id="parcDispo">—</p>
+            <p class="text-xs text-slate-500 uppercase font-semibold">Disponibles</p>
           </div>
-          <div class="w-px bg-samu-border"></div>
+          <div class="w-px bg-slate-200"></div>
           <div class="text-center">
-            <p class="text-2xl font-bold text-orange-500" id="parc-mission-count">—</p>
-            <p class="text-xs text-slate-500 font-medium uppercase tracking-wide">En mission</p>
+            <p class="text-2xl font-bold text-orange-500" id="parcMission">—</p>
+            <p class="text-xs text-slate-500 uppercase font-semibold">En mission</p>
           </div>
-          <div class="w-px bg-samu-border"></div>
+          <div class="w-px bg-slate-200"></div>
           <div class="text-center">
-            <p class="text-2xl font-bold text-slate-400" id="parc-autre-count">—</p>
-            <p class="text-xs text-slate-500 font-medium uppercase tracking-wide">Indisponibles</p>
+            <p class="text-2xl font-bold text-slate-400" id="parcAutre">—</p>
+            <p class="text-xs text-slate-500 uppercase font-semibold">Indispos</p>
           </div>
         </div>
       </div>
-      <!-- Filter bar -->
-      <div class="flex gap-2 mt-5">
-        <button onclick="filtrerParc('tous')" id="filtre-tous" class="px-4 py-2 text-sm font-semibold rounded-lg bg-samu-blue text-white transition">Toutes les unités</button>
-        <button onclick="filtrerParc('disponible')" id="filtre-disponible" class="px-4 py-2 text-sm font-semibold rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition">Disponibles</button>
-        <button onclick="filtrerParc('en_mission')" id="filtre-en_mission" class="px-4 py-2 text-sm font-semibold rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition">En mission</button>
-        <button onclick="filtrerParc('maintenance')" id="filtre-maintenance" class="px-4 py-2 text-sm font-semibold rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition">Maintenance / Panne</button>
+      <!-- Filtres -->
+      <div class="flex flex-wrap gap-2 mt-4">
+        <button onclick="filterParc('tous')" id="ft-tous" class="px-4 py-1.5 text-sm font-semibold rounded-lg bg-brand-blue text-white transition">Toutes</button>
+        <button onclick="filterParc('disponible')" id="ft-disponible" class="px-4 py-1.5 text-sm font-semibold rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition">Disponibles</button>
+        <button onclick="filterParc('en_mission')" id="ft-en_mission" class="px-4 py-1.5 text-sm font-semibold rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition">En mission</button>
+        <button onclick="filterParc('maintenance')" id="ft-maintenance" class="px-4 py-1.5 text-sm font-semibold rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition">Maintenance / Panne</button>
       </div>
     </div>
-    <div class="p-8">
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5" id="fleet-grid">
-        <!-- Injected by JS -->
-      </div>
+    <div class="p-6">
+      <div id="fleetGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"></div>
     </div>
   </div>
-  <!-- ╚══ END PARC ══╝ -->
 
-  <!-- ╔══ TAB: HISTORIQUE ══╗ -->
-  <div id="view-historique" class="absolute inset-0 hidden flex-col bg-samu-panel overflow-auto">
-    <div class="bg-white border-b border-samu-border px-8 py-6">
-      <div class="flex items-center justify-between">
+  <!-- ▌TAB : HISTORIQUE ▐ -->
+  <div id="view-historique" class="absolute inset-0 hidden flex-col bg-slate-100 overflow-auto">
+    <div class="bg-white border-b border-slate-200 px-8 py-5">
+      <div class="flex items-start justify-between flex-wrap gap-4">
         <div>
           <h2 class="text-2xl font-bold text-slate-800">Historique des Interventions</h2>
-          <p class="text-slate-500 text-sm mt-1">Journal complet de toutes les missions SAMU</p>
+          <p class="text-slate-500 text-sm mt-0.5">Journal complet de toutes les missions SAMU</p>
         </div>
-        <!-- Search -->
-        <div class="relative">
-          <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
-          <input id="history-search" type="text" placeholder="Rechercher une mission…"
-            class="pl-9 pr-4 py-2 border border-samu-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-samu-blue w-56"
-            oninput="renderHistory()">
-        </div>
+        <input id="searchHist" type="text" placeholder="Rechercher…" oninput="renderHistory()"
+          class="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-blue w-52 bg-white">
       </div>
-      <!-- Summary cards -->
-      <div class="flex gap-4 mt-5">
-        <div class="bg-green-50 border border-green-200 rounded-xl px-5 py-3 flex items-center gap-3">
-          <i class="fas fa-check-circle text-green-500 text-xl"></i>
-          <div>
-            <p class="text-xl font-bold text-green-700" id="hist-termine">—</p>
-            <p class="text-xs text-green-600 font-medium">Terminées</p>
-          </div>
+      <!-- Stats -->
+      <div class="flex flex-wrap gap-3 mt-4">
+        <div class="bg-green-50 border border-green-200 rounded-xl px-4 py-2.5 flex items-center gap-2">
+          <i class="fas fa-check-circle text-green-500"></i>
+          <span class="text-lg font-bold text-green-700" id="hTermine">—</span>
+          <span class="text-xs text-green-600 font-semibold">Terminées</span>
         </div>
-        <div class="bg-orange-50 border border-orange-200 rounded-xl px-5 py-3 flex items-center gap-3">
-          <i class="fas fa-spinner text-orange-500 text-xl"></i>
-          <div>
-            <p class="text-xl font-bold text-orange-700" id="hist-cours">—</p>
-            <p class="text-xs text-orange-600 font-medium">En cours</p>
-          </div>
+        <div class="bg-orange-50 border border-orange-200 rounded-xl px-4 py-2.5 flex items-center gap-2">
+          <i class="fas fa-spinner text-orange-500"></i>
+          <span class="text-lg font-bold text-orange-700" id="hCours">—</span>
+          <span class="text-xs text-orange-600 font-semibold">En cours</span>
         </div>
-        <div class="bg-slate-50 border border-slate-200 rounded-xl px-5 py-3 flex items-center gap-3">
-          <i class="fas fa-list-check text-slate-500 text-xl"></i>
-          <div>
-            <p class="text-xl font-bold text-slate-700" id="hist-total">—</p>
-            <p class="text-xs text-slate-500 font-medium">Total</p>
-          </div>
+        <div class="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 flex items-center gap-2">
+          <i class="fas fa-list text-slate-500"></i>
+          <span class="text-lg font-bold text-slate-700" id="hTotal">—</span>
+          <span class="text-xs text-slate-500 font-semibold">Total</span>
         </div>
       </div>
     </div>
-    <div class="p-8 overflow-auto">
-      <div class="bg-white rounded-2xl shadow-sm border border-samu-border overflow-hidden">
+    <div class="p-6 overflow-auto">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
         <table class="w-full text-left text-sm">
-          <thead class="text-xs uppercase bg-slate-50 border-b border-samu-border text-slate-500 font-semibold">
+          <thead class="text-[11px] uppercase bg-slate-50 border-b border-slate-200 text-slate-500 font-bold">
             <tr>
-              <th class="px-5 py-4">Mission</th>
-              <th class="px-5 py-4">Date & Heure</th>
-              <th class="px-5 py-4">Alerte SOS</th>
-              <th class="px-5 py-4">Ambulance</th>
-              <th class="px-5 py-4">Hôpital Récepteur</th>
-              <th class="px-5 py-4">Gravité</th>
-              <th class="px-5 py-4">Statut</th>
-              <th class="px-5 py-4">Durée</th>
+              <th class="px-4 py-3">Mission</th>
+              <th class="px-4 py-3">Date / Heure</th>
+              <th class="px-4 py-3">SOS</th>
+              <th class="px-4 py-3">Ambulance</th>
+              <th class="px-4 py-3">Hôpital récepteur</th>
+              <th class="px-4 py-3">Gravité</th>
+              <th class="px-4 py-3">Statut</th>
+              <th class="px-4 py-3">Durée</th>
             </tr>
           </thead>
-          <tbody id="history-table-body" class="divide-y divide-slate-50">
-          </tbody>
+          <tbody id="histBody" class="divide-y divide-slate-50"></tbody>
         </table>
-        <div id="history-empty" class="hidden py-16 text-center text-slate-400">
-          <i class="fas fa-inbox text-4xl mb-3 block"></i>
+        <div id="histEmpty" class="hidden py-14 text-center text-slate-400">
+          <i class="fas fa-inbox text-4xl block mb-3"></i>
           <p class="font-medium">Aucune mission enregistrée.</p>
         </div>
       </div>
     </div>
   </div>
-  <!-- ╚══ END HISTORIQUE ══╝ -->
 
 </div><!-- /workspace -->
 
-<!-- ══════════════════════════════════════════════════════
-     MODAL: INFOS VICTIME
-═══════════════════════════════════════════════════════ -->
-<div id="modal-victime" class="modal-backdrop">
-  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden">
-    <div class="px-6 py-4 border-b border-samu-border flex justify-between items-center bg-slate-50">
-      <div class="flex items-center gap-2">
-        <i class="fas fa-user-injured text-samu-blue"></i>
-        <h3 class="font-bold text-slate-800">Informations Victime</h3>
+<!-- ═══════════════════════════════════════════════
+     MODAL INFOS VICTIME
+════════════════════════════════════════════════ -->
+<div id="modalVictime" class="modal-bg">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+    <div class="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+      <div class="flex items-center gap-2 font-semibold text-slate-800">
+        <i class="fas fa-user-injured text-brand-blue"></i>Informations Victime
       </div>
-      <button onclick="closeVictimModal()" class="text-slate-400 hover:text-slate-600">
-        <i class="fas fa-times text-xl"></i>
-      </button>
+      <button onclick="closeVictimModal()" class="text-slate-400 hover:text-slate-600 text-xl">&times;</button>
     </div>
-    <div class="p-6 space-y-4">
+    <div class="p-5 space-y-4">
       <div>
-        <label class="block text-sm font-semibold text-slate-700 mb-1.5">Téléphone de contact</label>
-        <input id="victime-tel" type="text" placeholder="Ex: 690 00 00 00"
-          class="w-full border border-samu-border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-samu-blue focus:outline-none">
+        <label class="block text-sm font-semibold text-slate-700 mb-1">Téléphone de contact</label>
+        <input id="vTel" type="text" placeholder="Ex: 690 00 00 00"
+          class="w-full border border-slate-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-brand-blue outline-none">
       </div>
       <div>
-        <label class="block text-sm font-semibold text-slate-700 mb-1.5">Gravité (Triage)</label>
-        <select id="victime-gravite" class="w-full border border-samu-border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-samu-blue focus:outline-none">
+        <label class="block text-sm font-semibold text-slate-700 mb-1">Gravité (Triage)</label>
+        <select id="vGrav" class="w-full border border-slate-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-brand-blue outline-none bg-white">
           <option value="P1">P1 — Urgence vitale (rouge)</option>
           <option value="P2">P2 — Urgence relative (orange)</option>
           <option value="P3">P3 — Non urgent (vert)</option>
         </select>
       </div>
       <div>
-        <label class="block text-sm font-semibold text-slate-700 mb-1.5">Description clinique / Note du régulateur</label>
-        <textarea id="victime-desc" rows="3"
-          class="w-full border border-samu-border rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-samu-blue focus:outline-none resize-none"
-          placeholder="État clinique de la victime…"></textarea>
+        <label class="block text-sm font-semibold text-slate-700 mb-1">Note clinique du régulateur</label>
+        <textarea id="vDesc" rows="3"
+          class="w-full border border-slate-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-brand-blue outline-none resize-none"
+          placeholder="État de la victime…"></textarea>
       </div>
     </div>
-    <div class="px-6 py-4 border-t border-samu-border bg-slate-50 flex justify-end gap-3">
-      <button onclick="closeVictimModal()" class="px-5 py-2 font-semibold text-slate-600 hover:bg-slate-200 rounded-xl transition">Annuler</button>
-      <button onclick="saveVictimInfo()" class="px-5 py-2 font-bold text-white bg-samu-blue hover:bg-blue-700 rounded-xl shadow transition">Enregistrer</button>
+    <div class="px-5 py-3 border-t border-slate-100 bg-slate-50 flex justify-end gap-2">
+      <button onclick="closeVictimModal()" class="px-4 py-2 font-semibold text-slate-600 hover:bg-slate-200 rounded-xl transition">Annuler</button>
+      <button onclick="saveVictimInfo()" class="px-4 py-2 font-bold text-white bg-brand-blue hover:bg-blue-700 rounded-xl shadow transition">Enregistrer</button>
     </div>
   </div>
 </div>
 
-<!-- Toast container -->
-<div id="toast-container"></div>
+<div id="toasts"></div>
 
-<!-- ══════════════════════════════════════════════════════
-     SCRIPTS
-═══════════════════════════════════════════════════════ -->
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- ═══════════════════════════════════════════════
+     JAVASCRIPT
+════════════════════════════════════════════════ -->
 <script>
 'use strict';
 
-// ─── AUTH ─────────────────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const toast = (msg, t='inf') => {
+  const el = document.createElement('div');
+  const ico = {ok:'fa-check-circle', err:'fa-exclamation-circle', inf:'fa-info-circle'}[t];
+  el.className = `toast toast-${t}`;
+  el.innerHTML = `<i class="fas ${ico}"></i><span>${msg}</span>`;
+  $('toasts').appendChild(el);
+  setTimeout(() => el.remove(), 5000);
+};
 
-let accessToken = localStorage.getItem('reg_access') || null;
-let currentUser = null;
-let parcFiltre = 'tous';
+// ── Auth ─────────────────────────────────────────────────────────────────────
+let token = localStorage.getItem('samu_tk') || '';
 
 function togglePwd() {
-  const inp = document.getElementById('login-password');
-  const ico = document.getElementById('eye-icon');
-  if (inp.type === 'password') { inp.type = 'text'; ico.className = 'fas fa-eye-slash text-sm'; }
-  else { inp.type = 'password'; ico.className = 'fas fa-eye text-sm'; }
+  const i = $('lp'); i.type = i.type === 'password' ? 'text' : 'password';
+  $('eyeico').className = i.type === 'password' ? 'fas fa-eye text-sm' : 'fas fa-eye-slash text-sm';
 }
 
 async function doLogin() {
-  const username = document.getElementById('login-username').value.trim();
-  const password = document.getElementById('login-password').value;
-  const errEl    = document.getElementById('login-error');
-  const btn      = document.getElementById('login-btn');
-  if (!username || !password) { showLoginError('Veuillez remplir tous les champs.'); return; }
-
-  btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Vérification…';
-  btn.disabled = true;
-  errEl.classList.add('hidden');
-
+  const u = $('lu').value.trim(), p = $('lp').value;
+  const err = $('login-error'), btn = $('loginBtn');
+  if (!u || !p) { err.textContent = 'Remplissez tous les champs.'; err.classList.remove('hidden'); return; }
+  err.classList.add('hidden');
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Vérification…'; btn.disabled = true;
   try {
     const res = await fetch('/api/auth/login/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password })
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({username:u, password:p})
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || 'Identifiants incorrects.');
-
-    const role = data.role || '';
-    if (!['medecin_regulateur', 'administrateur'].includes(role)) {
-      throw new Error('Accès refusé. Ce portail est réservé aux médecins régulateurs.');
-    }
-
-    accessToken = data.access;
-    localStorage.setItem('reg_access', accessToken);
-    localStorage.setItem('reg_refresh', data.refresh || '');
-    currentUser = { username: data.username || username, role };
-
-    document.getElementById('header-username').textContent = currentUser.username;
-    document.getElementById('login-overlay').style.display = 'none';
-
-    await fetchDashboardData();
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.detail || 'Identifiants incorrects.');
+    if (!['medecin_regulateur','administrateur'].includes(d.role))
+      throw new Error('Accès refusé : portail réservé aux médecins régulateurs.');
+    token = d.access;
+    localStorage.setItem('samu_tk', token);
+    localStorage.setItem('samu_rf', d.refresh || '');
+    $('hdrUser').textContent = d.username || u;
+    $('login-overlay').style.display = 'none';
+    await loadAll();
     initMap();
-
-  } catch (e) {
-    showLoginError(e.message);
+  } catch(e) {
+    err.textContent = e.message; err.classList.remove('hidden');
   } finally {
     btn.innerHTML = '<i class="fas fa-shield-alt mr-2"></i>Accéder au Portail';
     btn.disabled = false;
   }
 }
 
-function showLoginError(msg) {
-  const el = document.getElementById('login-error');
-  el.textContent = msg;
-  el.classList.remove('hidden');
-}
-
 function logout() {
-  accessToken = null;
-  localStorage.removeItem('reg_access');
-  localStorage.removeItem('reg_refresh');
-  document.getElementById('login-overlay').style.display = 'flex';
-  document.getElementById('login-username').value = '';
-  document.getElementById('login-password').value = '';
+  token = ''; localStorage.removeItem('samu_tk'); localStorage.removeItem('samu_rf');
+  $('login-overlay').style.display = 'flex';
 }
 
-async function apiCall(path, options = {}) {
-  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
-  if (accessToken) headers['Authorization'] = 'Bearer ' + accessToken;
-
-  let res = await fetch('/api' + path, { ...options, headers });
-
-  if (res.status === 401) {
-    const refresh = localStorage.getItem('reg_refresh');
-    if (refresh) {
-      const rr = await fetch('/api/auth/refresh/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refresh }) });
-      if (rr.ok) {
-        const rd = await rr.json();
-        accessToken = rd.access;
-        localStorage.setItem('reg_access', accessToken);
-        headers['Authorization'] = 'Bearer ' + accessToken;
-        res = await fetch('/api' + path, { ...options, headers });
-      } else {
-        logout();
-        return null;
-      }
-    }
+async function api(path, opts={}) {
+  const h = {'Content-Type':'application/json', ...(opts.headers||{})};
+  if (token) h['Authorization'] = 'Bearer ' + token;
+  let r = await fetch('/api' + path, {...opts, headers:h});
+  if (r.status === 401) {
+    const rf = localStorage.getItem('samu_rf');
+    if (rf) {
+      const rr = await fetch('/api/auth/refresh/', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({refresh:rf})});
+      if (rr.ok) { const rd = await rr.json(); token = rd.access; localStorage.setItem('samu_tk',token); h['Authorization']='Bearer '+token; r = await fetch('/api'+path,{...opts,headers:h}); }
+      else { logout(); return null; }
+    } else { logout(); return null; }
   }
-  return res;
+  return r;
 }
 
-// ─── CLOCK ─────────────────────────────────────────────────────────────────────
+// ── Clock ────────────────────────────────────────────────────────────────────
+const tick = () => $('clock').textContent = new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+setInterval(tick, 1000); tick();
 
-function updateClock() {
-  const n = new Date();
-  document.getElementById('clock').textContent = n.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-}
-setInterval(updateClock, 1000); updateClock();
-
-// ─── TABS ──────────────────────────────────────────────────────────────────────
-
-function switchTab(id) {
-  ['supervision', 'parc', 'historique'].forEach(t => {
-    document.getElementById('view-' + t).classList.add('hidden');
-    document.getElementById('view-' + t).classList.remove('flex');
-    document.getElementById('tab-' + t).classList.remove('active');
-    document.getElementById('tab-' + t).classList.add('text-sm', 'px-4');
+// ── Tabs ─────────────────────────────────────────────────────────────────────
+const TABS = ['supervision','parc','historique'];
+function gotoTab(id) {
+  TABS.forEach(t => {
+    $('view-'+t).classList.add('hidden'); $('view-'+t).classList.remove('flex');
+    $('tab-'+t).className = 'tab-btn';
   });
-  const view = document.getElementById('view-' + id);
-  view.classList.remove('hidden');
-  view.classList.add('flex');
-  document.getElementById('tab-' + id).classList.add('active');
-
-  if (id === 'supervision' && map) setTimeout(() => map.invalidateSize(), 50);
-  else if (id === 'parc') renderParc();
-  else if (id === 'historique') renderHistory();
+  $('view-'+id).classList.remove('hidden'); $('view-'+id).classList.add('flex');
+  $('tab-'+id).className = 'tab-btn on';
+  if (id==='supervision' && map) setTimeout(()=>map.invalidateSize(),50);
+  if (id==='parc') renderParc();
+  if (id==='historique') renderHistory();
 }
 
-// ─── MAP ───────────────────────────────────────────────────────────────────────
-
-let map = null;
-let mapMarkers = {};
-let mapReady = false;
-
+// ── Map ──────────────────────────────────────────────────────────────────────
+let map=null, mks={};
 function initMap() {
-  if (mapReady) return;
-  map = L.map('map', { zoomControl: false }).setView([3.8480, 11.5021], 12);
-  L.control.zoom({ position: 'bottomright' }).addTo(map);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19, attribution: '© OpenStreetMap'
+  if (map) return;
+  map = L.map('map',{zoomControl:false}).setView([3.8480,11.5021],12);
+  L.control.zoom({position:'bottomright'}).addTo(map);
+  // CartoDB Positron — gratuit, aucune clé API requise
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
+    attribution:'© OpenStreetMap © CARTO', subdomains:'abcd', maxZoom:19
   }).addTo(map);
-  mapReady = true;
+  updateMapMarkers();
 }
 
-const mkPin = (color, icon, pulse = false) => L.divIcon({
-  html: `<div class="pin-wrapper${pulse ? ' pin-pulse' : ''}"><div class="pin pin-${color}"><i class="fas ${icon}"></i></div></div>`,
-  className: '', iconSize: [36, 36], iconAnchor: [18, 36], popupAnchor: [0, -40]
+const pin=(color,ico,pulse=false)=>L.divIcon({
+  html:`<div class="pin-wrap${pulse?' pin-pulse':''}"><div class="pin pin-${color}"><i class="fas ${ico}"></i></div></div>`,
+  className:'',iconSize:[34,34],iconAnchor:[17,34],popupAnchor:[0,-38]
 });
-
 const PINS = {
-  sos_new:   mkPin('red',    'fa-exclamation',    true),
-  sos_cours: mkPin('orange', 'fa-person-running'),
-  amb_dispo: mkPin('blue',   'fa-truck-medical'),
-  amb_miss:  mkPin('orange', 'fa-truck-fast'),
-  amb_off:   mkPin('gray',   'fa-truck'),
-  hopital:   mkPin('green',  'fa-hospital-symbol'),
+  sos_new:  pin('red',   'fa-exclamation',   true),
+  sos_pris: pin('orange','fa-person-running'),
+  amb_ok:   pin('blue',  'fa-truck-medical'),
+  amb_mis:  pin('orange','fa-truck-fast'),
+  amb_off:  pin('slate', 'fa-truck'),
+  hop:      pin('green', 'fa-hospital-symbol'),
 };
 
 function updateMapMarkers() {
-  Object.values(mapMarkers).forEach(m => map && map.removeLayer(m));
-  mapMarkers = {};
-  if (!map) return;
-
-  alertesData.forEach(a => {
-    if (!a.latitude) return;
-    const ic = a.statut === 'en_attente' ? PINS.sos_new : PINS.sos_cours;
-    const m = L.marker([a.latitude, a.longitude], { icon: ic }).addTo(map);
-    const gravLabel = {'P1':'<span class="text-red-600 font-bold">P1 Vitale</span>', 'P2':'<span class="text-orange-500 font-bold">P2 Relative</span>', 'P3':'<span class="text-green-600 font-bold">P3 Non urgent</span>'}[a.gravite] || a.gravite;
-    m.bindPopup(`<div class="text-slate-800 font-bold text-sm mb-1">SOS #${String(a.id_suivi).substring(0,8).toUpperCase()}</div><div class="text-xs text-slate-500 mb-1">${a.adresse_manuelle || 'Coordonnées GPS'}</div><div class="text-xs">Gravité: ${gravLabel}</div>`, { maxWidth: 220 });
-    m.on('click', () => selectAlerte(a.id, false));
-    mapMarkers['sos_' + a.id] = m;
+  Object.values(mks).forEach(m=>map&&map.removeLayer(m)); mks={};
+  if(!map) return;
+  alertes.forEach(a=>{
+    if(!a.latitude) return;
+    const ic=a.statut==='en_attente'?PINS.sos_new:PINS.sos_pris;
+    const m=L.marker([a.latitude,a.longitude],{icon:ic}).addTo(map);
+    m.bindPopup(`<b>SOS #${String(a.id_suivi).substring(0,8).toUpperCase()}</b><br><span style="font-size:12px;color:#64748b">${a.adresse_manuelle||'GPS'} — ${a.gravite||'?'}</span>`);
+    m.on('click',()=>selectAlerte(a.id,false));
+    mks['s'+a.id]=m;
   });
-
-  ambulancesData.forEach(a => {
-    if (!a.latitude) return;
-    const ic = a.statut === 'disponible' ? PINS.amb_dispo : a.statut === 'en_mission' ? PINS.amb_miss : PINS.amb_off;
-    const m = L.marker([a.latitude, a.longitude], { icon: ic }).addTo(map);
-    const statColor = {'disponible':'text-green-600','en_mission':'text-orange-500','maintenance':'text-slate-400','en_panne':'text-red-600'}[a.statut] || 'text-slate-600';
-    m.bindPopup(`<div class="font-bold text-slate-800 text-sm mb-1">${a.matricule}</div><div class="text-xs ${statColor} font-semibold capitalize">${a.statut.replace('_', ' ')}</div>`, { maxWidth: 200 });
-    mapMarkers['amb_' + a.id] = m;
+  ambulances.forEach(a=>{
+    if(!a.latitude) return;
+    const ic=a.statut==='disponible'?PINS.amb_ok:a.statut==='en_mission'?PINS.amb_mis:PINS.amb_off;
+    const m=L.marker([a.latitude,a.longitude],{icon:ic}).addTo(map);
+    m.bindPopup(`<b>${a.matricule}</b><br><span style="font-size:12px;color:#64748b">${a.statut.replace('_',' ')}</span>`);
+    mks['a'+a.id]=m;
   });
-
-  hopitauxData.forEach(h => {
-    if (!h.latitude) return;
-    const m = L.marker([h.latitude, h.longitude], { icon: PINS.hopital }).addTo(map);
-    m.bindPopup(`<div class="font-bold text-slate-800 text-sm mb-1">${h.nom}</div><div class="text-xs text-green-600 font-semibold">Hôpital / Clinique</div><div class="text-xs text-slate-400 mt-0.5">Lits: ${h.capacite_lits || '—'}</div>`, { maxWidth: 200 });
-    mapMarkers['hop_' + h.id] = m;
+  hopitaux.forEach(h=>{
+    if(!h.latitude) return;
+    const m=L.marker([h.latitude,h.longitude],{icon:PINS.hop}).addTo(map);
+    m.bindPopup(`<b>${h.nom}</b><br><span style="font-size:12px;color:#16a34a">Hôpital — ${h.capacite_lits} lits</span>`);
+    mks['h'+h.id]=m;
   });
 }
 
-// ─── DATA ──────────────────────────────────────────────────────────────────────
+// ── Data ─────────────────────────────────────────────────────────────────────
+let alertes=[], ambulances=[], missions=[], hopitaux=[];
 
-let alertesData    = [];
-let ambulancesData = [];
-let missionsData   = [];
-let hopitauxData   = [];
-let selectedAlerteId = null;
-
-async function fetchDashboardData() {
-  const res = await apiCall('/dashboard_data/');
-  if (!res || !res.ok) return;
-  const data = await res.json();
-
-  alertesData    = data.alertes    || [];
-  ambulancesData = data.ambulances || [];
-  missionsData   = data.missions   || [];
-  hopitauxData   = data.hopitaux   || [];
-
-  updateKPIs();
-  renderAlertList();
-  updateMapMarkers();
+async function loadAll() {
+  const r = await api('/dashboard_data/');
+  if(!r||!r.ok) return;
+  const d = await r.json();
+  alertes    = d.alertes    || [];
+  ambulances = d.ambulances || [];
+  missions   = d.missions   || [];
+  hopitaux   = d.hopitaux   || [];
+  updateKPIs(); renderAlertList(); updateMapMarkers();
   updateParcCounts();
 }
+setInterval(()=>{ if(token) loadAll(); }, 6000);
 
 function updateKPIs() {
-  const nbNouv  = alertesData.filter(a => a.statut === 'en_attente').length;
-  const nbCours = missionsData.filter(m => m.statut !== 'termine').length;
-  const nbDispo = ambulancesData.filter(a => a.statut === 'disponible').length;
-  document.getElementById('kpi-sos').textContent  = nbNouv;
-  document.getElementById('kpi-cours').textContent = nbCours;
-  document.getElementById('kpi-amb').textContent  = nbDispo;
+  $('kpi-sos').textContent     = alertes.length;
+  $('kpi-missions').textContent = missions.filter(m=>m.statut!=='termine').length;
+  $('kpi-amb').textContent     = ambulances.filter(a=>a.statut==='disponible').length;
 }
 
-// ─── ALERT LIST ────────────────────────────────────────────────────────────────
-
-const GRAVITE_CSS = {
-  P1: 'bg-red-100 text-red-700 border-red-200',
-  P2: 'bg-orange-100 text-orange-700 border-orange-200',
-  P3: 'bg-green-100 text-green-700 border-green-200',
-};
+// ── Liste alertes ─────────────────────────────────────────────────────────────
+let selId = null;
+const GCSS={P1:'bg-red-100 text-red-700',P2:'bg-orange-100 text-orange-600',P3:'bg-green-100 text-green-700'};
 
 function renderAlertList() {
-  const list = document.getElementById('alert-list');
-  document.getElementById('alert-count').textContent = alertesData.length + ' alerte(s)';
-
-  if (!alertesData.length) {
-    list.innerHTML = '<div class="text-sm text-slate-400 text-center py-10"><i class="fas fa-check-circle text-3xl mb-2 block text-green-300"></i>Aucun incident actif.</div>';
+  $('alertCount').textContent = alertes.length + ' alerte(s)';
+  const el = $('alertList');
+  if(!alertes.length){
+    el.innerHTML='<div class="text-sm text-slate-400 text-center py-10"><i class="fas fa-check-circle text-3xl block mb-2 text-green-300"></i>Aucun incident actif.</div>';
     return;
   }
-
-  list.innerHTML = alertesData.map(a => {
-    const isNew = a.statut === 'en_attente';
-    const sel   = selectedAlerteId === a.id;
-    const time  = new Date(a.date_creation).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-    const gc    = GRAVITE_CSS[a.gravite] || GRAVITE_CSS.P2;
-
-    return `<div onclick="selectAlerte(${a.id}, true)" class="cursor-pointer p-3 rounded-xl border transition-all ${sel ? 'bg-blue-50 border-samu-blue ring-1 ring-samu-blue' : 'bg-white border-slate-200 hover:border-slate-300'}">
-      <div class="flex items-start gap-3">
-        <div class="w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${isNew ? 'bg-red-50 text-samu-red' : 'bg-orange-50 text-orange-500'}">
-          <i class="fas ${isNew ? 'fa-exclamation-circle' : 'fa-spinner fa-spin'} text-sm"></i>
+  el.innerHTML = alertes.map(a=>{
+    const isNew=a.statut==='en_attente', sel=selId===a.id;
+    const time=new Date(a.date_creation).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+    const gc=GCSS[a.gravite]||GCSS.P2;
+    return `<div onclick="selectAlerte(${a.id},true)"
+      class="cursor-pointer p-3 rounded-xl border transition-all ${sel?'bg-blue-50 border-brand-blue ring-1 ring-brand-blue':'bg-white border-slate-200 hover:border-slate-300'}">
+      <div class="flex items-start gap-2.5">
+        <div class="w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${isNew?'bg-red-50 text-brand-red':'bg-orange-50 text-orange-500'}">
+          <i class="fas ${isNew?'fa-exclamation-circle':'fa-spinner fa-spin'} text-sm"></i>
         </div>
         <div class="flex-1 min-w-0">
-          <div class="flex justify-between items-center mb-1">
+          <div class="flex justify-between mb-0.5">
             <span class="font-bold text-slate-800 text-sm font-mono">#${String(a.id_suivi).substring(0,8).toUpperCase()}</span>
-            <span class="text-xs text-slate-400 font-medium">${time}</span>
+            <span class="text-xs text-slate-400">${time}</span>
           </div>
-          <p class="text-xs text-slate-500 line-clamp-1 mb-1.5">${a.adresse_manuelle || 'Position GPS transmise'}</p>
-          <div class="flex items-center gap-1.5">
-            <span class="text-[10px] font-bold px-1.5 py-0.5 rounded border ${gc}">${a.gravite || '?'}</span>
-            <span class="text-[10px] text-slate-400 capitalize">${a.statut.replace('_', ' ')}</span>
+          <p class="text-xs text-slate-500 line-clamp-1 mb-1">${a.adresse_manuelle||'Position GPS transmise'}</p>
+          <div class="flex gap-1.5">
+            <span class="text-[10px] font-bold px-1.5 py-0.5 rounded ${gc}">${a.gravite||'?'}</span>
+            <span class="text-[10px] text-slate-400 capitalize">${a.statut.replace('_',' ')}</span>
+            <span class="text-[10px] text-slate-300 ml-auto">ID:${a.id}</span>
           </div>
         </div>
       </div>
@@ -773,404 +687,262 @@ function renderAlertList() {
   }).join('');
 }
 
-// ─── SELECT ALERTE ─────────────────────────────────────────────────────────────
+// ── Sélection alerte ──────────────────────────────────────────────────────────
+const SSTAT={en_route:'En route',arrive:'Sur les lieux',prise_en_charge:'Prise en charge',transport:'Vers l\'hôpital',termine:'Terminée',en_panne:'En panne'};
 
-const STATUT_MISSION_LABELS = {
-  en_route: 'En route', arrive: 'Sur les lieux',
-  prise_en_charge: 'Prise en charge', transport: 'Transport hôpital',
-  termine: 'Terminée', en_panne: 'En panne'
-};
+function selectAlerte(id, pan=false) {
+  const a=alertes.find(x=>x.id==id); if(!a) return;
+  selId=id;
+  if(pan && a.latitude && map) map.flyTo([a.latitude,a.longitude],16,{duration:1});
 
-function selectAlerte(id, pan = false) {
-  const alerte = alertesData.find(a => a.id == id);
-  if (!alerte) return;
-  selectedAlerteId = id;
+  $('consoleEmpty').classList.add('hidden');
+  $('consoleActive').classList.remove('hidden');
+  $('cSosId').textContent='#'+String(a.id_suivi).substring(0,8).toUpperCase();
+  $('cLoc').textContent=a.adresse_manuelle||'Coordonnées GPS transmises';
+  $('alerteIdInput').value=a.id;  // pré-rempli automatiquement
 
-  if (pan && alerte.latitude && map) {
-    map.flyTo([alerte.latitude, alerte.longitude], 16, { duration: 1 });
-  }
+  const gText={'P1':'P1 — Urgence vitale','P2':'P2 — Urgence relative','P3':'P3 — Non urgent'}[a.gravite]||'?';
+  const gc=GCSS[a.gravite]||GCSS.P2;
+  $('cGrav').innerHTML=`<span class="px-2 py-0.5 rounded text-xs font-bold ${gc}">${gText}</span>`;
 
-  document.getElementById('console-empty').classList.add('hidden');
-  document.getElementById('console-active').classList.remove('hidden');
-  document.getElementById('console-sos-id').textContent = '#' + String(alerte.id_suivi).substring(0, 8).toUpperCase();
-  document.getElementById('console-loc').textContent = alerte.adresse_manuelle || 'Coordonnées GPS transmises';
-
-  const gc = { P1: 'bg-red-100 text-red-700', P2: 'bg-orange-100 text-orange-600', P3: 'bg-green-100 text-green-700' }[alerte.gravite] || 'bg-slate-100 text-slate-600';
-  document.getElementById('console-gravite-badge').innerHTML = `<span class="px-2 py-0.5 rounded text-xs font-bold ${gc}">${alerte.gravite || '?'} — ${{'P1':'Urgence vitale','P2':'Urgence relative','P3':'Non urgent'}[alerte.gravite] || ''}</span>`;
-
-  const hasActiveMission = alerte.statut !== 'en_attente';
-  const missionActive    = missionsData.find(m => m.alerte == id && m.statut !== 'termine');
-
-  if (!hasActiveMission) {
+  const mActive=missions.find(m=>m.alerte==id && m.statut!=='termine');
+  if(a.statut==='en_attente' && !mActive){
     // Mode dispatch
-    document.getElementById('dispatch-section').classList.remove('hidden');
-    document.getElementById('mission-section').classList.add('hidden');
-    document.getElementById('mission-section').classList.remove('flex');
-
-    // Ambulance cards
-    const dispos = ambulancesData.filter(a => a.statut === 'disponible');
-    const cardsEl = document.getElementById('ambulance-cards');
-    if (!dispos.length) {
-      cardsEl.innerHTML = `<div class="text-center py-4 text-slate-400 text-sm bg-red-50 border border-red-100 rounded-lg"><i class="fas fa-exclamation-triangle text-red-400 mr-2"></i>Aucune unité disponible.</div>`;
-    } else {
-      cardsEl.innerHTML = dispos.map((a, i) => {
-        const hasGPS = a.latitude && a.longitude;
-        const dist   = (hasGPS && alerte.latitude) ? calcDist(alerte.latitude, alerte.longitude, a.latitude, a.longitude) : null;
-        return `<label class="flex items-center gap-3 p-2.5 rounded-xl border-2 cursor-pointer transition ${i === 0 ? 'border-samu-blue bg-blue-50' : 'border-slate-200 bg-white hover:border-blue-300'}">
-          <input type="radio" name="amb-radio" value="${a.id}" ${i === 0 ? 'checked' : ''} class="accent-samu-blue">
-          <div class="flex-1 min-w-0">
-            <p class="font-bold text-slate-800 text-sm leading-none">${a.matricule}</p>
-            <p class="text-xs text-slate-500 mt-0.5">${a.equipement || 'SMUR Standard'}</p>
-          </div>
-          ${dist !== null ? `<span class="text-xs font-semibold text-samu-blue shrink-0">${dist.toFixed(1)} km</span>` : ''}
-          <div class="w-2 h-2 rounded-full bg-green-500 shrink-0"></div>
-        </label>`;
-      }).join('');
-      // Sort by distance: already done via UI but let's track labels changes
-      document.querySelectorAll('input[name="amb-radio"]').forEach(radio => {
-        radio.closest('label').addEventListener('click', function() {
-          document.querySelectorAll('label').forEach(l => { if(l.querySelector('input[name="amb-radio"]')) l.className = l.className.replace('border-samu-blue bg-blue-50', 'border-slate-200 bg-white hover:border-blue-300'); });
-          this.className = this.className.replace('border-slate-200 bg-white hover:border-blue-300', 'border-samu-blue bg-blue-50');
-        });
-      });
-    }
-
-    // Hopital select
-    const hopSel = document.getElementById('hopital-select');
-    hopSel.innerHTML = '<option value="">Sélection automatique par l\'ambulancier</option>';
-    hopitauxData.forEach(h => {
-      const dist = (h.latitude && alerte.latitude) ? calcDist(alerte.latitude, alerte.longitude, h.latitude, h.longitude) : null;
-      hopSel.innerHTML += `<option value="${h.id}">${h.nom}${dist !== null ? ' (~' + dist.toFixed(1) + ' km)' : ''}</option>`;
-    });
-
-  } else if (missionActive) {
-    // Mode suivi mission active
-    document.getElementById('dispatch-section').classList.add('hidden');
-    document.getElementById('mission-section').classList.remove('hidden');
-    document.getElementById('mission-section').classList.add('flex');
-
-    const ambLabel = missionActive.ambulance_detail?.matricule || '—';
-    document.getElementById('mission-amb-label').textContent = ambLabel;
-
-    const sLabel = STATUT_MISSION_LABELS[missionActive.statut] || missionActive.statut;
-    const sColor = { en_route: 'text-orange-500', arrive: 'text-samu-blue', prise_en_charge: 'text-purple-600', transport: 'text-indigo-600', termine: 'text-green-600', en_panne: 'text-red-600' }[missionActive.statut] || 'text-slate-500';
-    document.getElementById('mission-statut-label').textContent = sLabel;
-    document.getElementById('mission-statut-label').className   = 'text-xs font-semibold ' + sColor;
-    document.getElementById('mission-statut-icon').className    = 'fas fa-circle-dot text-sm ' + sColor;
-    document.getElementById('mission-status-select').value = missionActive.statut;
-    document.getElementById('mission-status-select').dataset.missionId = missionActive.id;
+    $('dispatchSection').classList.remove('hidden');
+    $('missionSection').classList.add('hidden'); $('missionSection').classList.remove('flex');
+    buildAmbCards(a);
+  } else if(mActive){
+    $('dispatchSection').classList.add('hidden');
+    $('missionSection').classList.remove('hidden'); $('missionSection').classList.add('flex');
+    $('mAmbLabel').textContent=mActive.ambulance_detail?.matricule||'—';
+    const sc={en_route:'text-orange-500',arrive:'text-brand-blue',prise_en_charge:'text-purple-600',transport:'text-indigo-600',termine:'text-green-600',en_panne:'text-red-600'}[mActive.statut]||'text-slate-500';
+    $('mStatLabel').textContent=SSTAT[mActive.statut]||mActive.statut;
+    $('mStatLabel').className='text-xs font-semibold '+sc;
+    $('mStatIco').className='fas fa-circle-dot text-sm '+sc;
+    $('mStatusSel').value=mActive.statut;
+    $('mStatusSel').dataset.mid=mActive.id;
   }
-
   renderAlertList();
 }
 
-// ─── HAVERSINE ─────────────────────────────────────────────────────────────────
-function calcDist(lat1, lon1, lat2, lon2) {
-  const R = 6371;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-// ─── DISPATCH ──────────────────────────────────────────────────────────────────
-
-async function deployerAmbulance() {
-  if (!selectedAlerteId) return;
-
-  const ambRadio = document.querySelector('input[name="amb-radio"]:checked');
-  if (!ambRadio) { showToast('Veuillez sélectionner une unité.', 'error'); return; }
-
-  const ambId    = ambRadio.value;
-  const hopId    = document.getElementById('hopital-select').value;
-  const btn      = document.getElementById('btn-deploy');
-
-  btn.innerHTML  = '<i class="fas fa-spinner fa-spin mr-2"></i>Transmission en cours…';
-  btn.disabled   = true;
-
-  try {
-    const res = await apiCall('/missions/envoyer_dashboard/', {
-      method: 'POST',
-      body: JSON.stringify({ alerte: selectedAlerteId, ambulance: ambId, hopital: hopId || undefined })
-    });
-
-    if (!res) throw new Error('Erreur de connexion.');
-    const data = await res.json();
-
-    if (!res.ok) throw new Error(data.error || data.detail || 'Erreur lors de l\'envoi.');
-
-    showToast(`✅ Mission #${data.mission} transmise — Itinéraire calculé — Ambulance en route.`, 'success');
-    selectedAlerteId = null;
-    document.getElementById('console-empty').classList.remove('hidden');
-    document.getElementById('console-active').classList.add('hidden');
-    await fetchDashboardData();
-
-  } catch (e) {
-    showToast(e.message, 'error');
-  } finally {
-    btn.innerHTML = '<i class="fas fa-bolt mr-2"></i>DÉCLENCHER L\'INTERVENTION';
-    btn.disabled  = false;
+function buildAmbCards(alerte) {
+  const dispos=ambulances.filter(a=>a.statut==='disponible');
+  const el=$('ambCards');
+  if(!dispos.length){
+    el.innerHTML=`<div class="text-center py-3 bg-red-50 border border-red-100 rounded-lg text-sm text-red-500">
+      <i class="fas fa-exclamation-triangle mr-1"></i>Aucune unité disponible</div>`;
+    return;
   }
+  // trier par distance si GPS dispo
+  const sorted=dispos.map(a=>{
+    const d=(a.latitude&&alerte.latitude)?haversine(alerte.latitude,alerte.longitude,a.latitude,a.longitude):null;
+    return {...a,dist:d};
+  }).sort((a,b)=> a.dist===null?1:b.dist===null?-1:a.dist-b.dist);
+
+  el.innerHTML=sorted.map((a,i)=>`
+    <label class="flex items-center gap-2.5 px-3 py-2 rounded-xl border-2 cursor-pointer transition
+      ${i===0?'border-brand-blue bg-blue-50':'border-slate-200 bg-white hover:border-blue-300'}">
+      <input type="radio" name="ambR" value="${a.id}" ${i===0?'checked':''} class="accent-blue-600">
+      <div class="flex-1 min-w-0">
+        <p class="font-bold text-slate-800 text-sm leading-none">${a.matricule}</p>
+        <p class="text-[11px] text-slate-400 mt-0.5">${a.equipement||'SMUR Standard'}</p>
+      </div>
+      ${a.dist!==null?`<span class="text-xs font-bold text-brand-blue shrink-0">${a.dist.toFixed(1)} km</span>`:''}
+      <span class="w-2 h-2 bg-green-500 rounded-full shrink-0"></span>
+    </label>`).join('');
 }
 
-// ─── UPDATE MISSION STATUS ─────────────────────────────────────────────────────
+const haversine=(la1,lo1,la2,lo2)=>{
+  const R=6371,d=x=>x*Math.PI/180;
+  const a=Math.sin(d(la2-la1)/2)**2+Math.cos(d(la1))*Math.cos(d(la2))*Math.sin(d(lo2-lo1)/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+};
 
+// ── Deploy ambulance ──────────────────────────────────────────────────────────
+async function deployAmbulance() {
+  const ambR=document.querySelector('input[name="ambR"]:checked');
+  if(!ambR){toast('Sélectionnez une ambulance.','err'); return;}
+  const alerteId=$('alerteIdInput').value;
+  if(!alerteId){toast('Aucun identifiant d\'alerte.','err'); return;}
+  const btn=$('btnDeploy');
+  btn.innerHTML='<i class="fas fa-spinner fa-spin mr-2"></i>Transmission…'; btn.disabled=true;
+  try {
+    const r=await api('/missions/envoyer_dashboard/',{
+      method:'POST', body:JSON.stringify({alerte:parseInt(alerteId), ambulance:parseInt(ambR.value)})
+    });
+    if(!r) throw new Error('Pas de réponse du serveur.');
+    const d=await r.json();
+    if(!r.ok) throw new Error(d.error||d.detail||'Erreur lors de l\'envoi.');
+    toast(`✅ Mission #${d.mission} créée — Ambulance ${ambulances.find(a=>a.id==ambR.value)?.matricule} en route!`,'ok');
+    selId=null;
+    $('consoleEmpty').classList.remove('hidden');
+    $('consoleActive').classList.add('hidden');
+    await loadAll();
+  } catch(e){ toast(e.message,'err'); }
+  finally { btn.innerHTML='<i class="fas fa-bolt mr-2"></i>DÉCLENCHER L\'INTERVENTION'; btn.disabled=false; }
+}
+
+// ── Update mission status ─────────────────────────────────────────────────────
 async function updateMissionStatus() {
-  const sel      = document.getElementById('mission-status-select');
-  const missionId = sel.dataset.missionId;
-  const statut   = sel.value;
-  if (!missionId) return;
-
+  const sel=$('mStatusSel'), mid=sel.dataset.mid, statut=sel.value;
+  if(!mid) return;
   try {
-    const res = await apiCall('/dashboard/mission/' + missionId + '/', {
-      method: 'PATCH',
-      body: JSON.stringify({ statut })
-    });
-    if (!res || !res.ok) throw new Error('Erreur mise à jour.');
-
-    if (statut === 'termine') {
-      selectedAlerteId = null;
-      document.getElementById('console-empty').classList.remove('hidden');
-      document.getElementById('console-active').classList.add('hidden');
-      showToast('Mission clôturée — Ambulance libérée.', 'success');
+    const r=await api('/dashboard/mission/'+mid+'/',{method:'PATCH', body:JSON.stringify({statut})});
+    if(!r||!r.ok) throw new Error('Erreur mise à jour.');
+    if(statut==='termine'){
+      selId=null; $('consoleEmpty').classList.remove('hidden'); $('consoleActive').classList.add('hidden');
+      toast('Mission clôturée — Ambulance libérée.','ok');
     } else {
-      showToast('Statut mis à jour : ' + STATUT_MISSION_LABELS[statut], 'info');
+      toast('Statut mis à jour : '+SSTAT[statut],'inf');
     }
-    await fetchDashboardData();
-  } catch (e) {
-    showToast(e.message, 'error');
-  }
+    await loadAll();
+  } catch(e){ toast(e.message,'err'); }
 }
 
-// ─── VICTIM MODAL ──────────────────────────────────────────────────────────────
-
+// ── Victim modal ──────────────────────────────────────────────────────────────
 function openVictimModal() {
-  if (!selectedAlerteId) return;
-  const a = alertesData.find(x => x.id == selectedAlerteId);
-  if (!a) return;
-  document.getElementById('victime-tel').value     = a.telephone_victime || '';
-  document.getElementById('victime-gravite').value = a.gravite || 'P2';
-  document.getElementById('victime-desc').value    = a.description || '';
-  document.getElementById('modal-victime').classList.add('open');
+  if(!selId) return;
+  const a=alertes.find(x=>x.id==selId); if(!a) return;
+  $('vTel').value=a.telephone_victime||''; $('vGrav').value=a.gravite||'P2'; $('vDesc').value=a.description||'';
+  $('modalVictime').classList.add('open');
 }
-function closeVictimModal() { document.getElementById('modal-victime').classList.remove('open'); }
-async function saveVictimInfo() {
-  if (!selectedAlerteId) return;
-  const payload = {
-    telephone_victime: document.getElementById('victime-tel').value,
-    gravite: document.getElementById('victime-gravite').value,
-    description: document.getElementById('victime-desc').value,
-  };
+function closeVictimModal(){ $('modalVictime').classList.remove('open'); }
+async function saveVictimInfo(){
+  if(!selId) return;
   try {
-    const res = await apiCall('/dashboard/alerte/' + selectedAlerteId + '/', { method: 'PATCH', body: JSON.stringify(payload) });
-    if (res && res.ok) {
-      closeVictimModal();
-      showToast('Informations victime enregistrées.', 'success');
-      await fetchDashboardData();
-    }
-  } catch (e) { showToast(e.message, 'error'); }
+    const r=await api('/dashboard/alerte/'+selId+'/',{method:'PATCH', body:JSON.stringify({
+      telephone_victime:$('vTel').value, gravite:$('vGrav').value, description:$('vDesc').value
+    })});
+    if(r&&r.ok){ closeVictimModal(); toast('Informations victime enregistrées.','ok'); await loadAll(); }
+  } catch(e){ toast(e.message,'err'); }
 }
 
-// ─── PARC ──────────────────────────────────────────────────────────────────────
-
-function updateParcCounts() {
-  document.getElementById('parc-dispo-count').textContent   = ambulancesData.filter(a => a.statut === 'disponible').length;
-  document.getElementById('parc-mission-count').textContent  = ambulancesData.filter(a => a.statut === 'en_mission').length;
-  document.getElementById('parc-autre-count').textContent    = ambulancesData.filter(a => !['disponible','en_mission'].includes(a.statut)).length;
+// ── Parc ambulancier ──────────────────────────────────────────────────────────
+let parcF='tous';
+function updateParcCounts(){
+  $('parcDispo').textContent=ambulances.filter(a=>a.statut==='disponible').length;
+  $('parcMission').textContent=ambulances.filter(a=>a.statut==='en_mission').length;
+  $('parcAutre').textContent=ambulances.filter(a=>!['disponible','en_mission'].includes(a.statut)).length;
 }
-
-function filtrerParc(f) {
-  parcFiltre = f;
-  ['tous','disponible','en_mission','maintenance'].forEach(k => {
-    const btn = document.getElementById('filtre-' + k);
-    if (k === f) btn.className = 'px-4 py-2 text-sm font-semibold rounded-lg bg-samu-blue text-white transition';
-    else         btn.className = 'px-4 py-2 text-sm font-semibold rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition';
+function filterParc(f){
+  parcF=f;
+  ['tous','disponible','en_mission','maintenance'].forEach(k=>{
+    const b=$('ft-'+k);
+    b.className=k===f?'px-4 py-1.5 text-sm font-semibold rounded-lg bg-brand-blue text-white transition'
+                     :'px-4 py-1.5 text-sm font-semibold rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition';
   });
   renderParc();
 }
-
-function renderParc() {
-  const grid = document.getElementById('fleet-grid');
-  let data = ambulancesData;
-  if (parcFiltre === 'disponible')  data = data.filter(a => a.statut === 'disponible');
-  if (parcFiltre === 'en_mission')  data = data.filter(a => a.statut === 'en_mission');
-  if (parcFiltre === 'maintenance') data = data.filter(a => ['maintenance','en_panne'].includes(a.statut));
-
-  if (!data.length) {
-    grid.innerHTML = '<div class="col-span-full text-center py-16 text-slate-400"><i class="fas fa-truck-medical text-4xl mb-3 block"></i>Aucune unité dans cette catégorie.</div>';
-    return;
-  }
-
-  const STATUT_CFG = {
-    disponible:  { label: 'Disponible',  dot: 'bg-green-500',  badge: 'bg-green-50 text-green-700 border-green-200',  icon: 'fa-circle-check' },
-    en_mission:  { label: 'En mission',  dot: 'bg-orange-500', badge: 'bg-orange-50 text-orange-700 border-orange-200', icon: 'fa-spinner fa-spin' },
-    maintenance: { label: 'Maintenance', dot: 'bg-slate-400',  badge: 'bg-slate-50 text-slate-600 border-slate-200',  icon: 'fa-wrench' },
-    en_panne:    { label: 'En panne',    dot: 'bg-red-500',    badge: 'bg-red-50 text-red-700 border-red-200',        icon: 'fa-triangle-exclamation' },
+function renderParc(){
+  let data=[...ambulances];
+  if(parcF==='disponible') data=data.filter(a=>a.statut==='disponible');
+  if(parcF==='en_mission') data=data.filter(a=>a.statut==='en_mission');
+  if(parcF==='maintenance') data=data.filter(a=>['maintenance','en_panne'].includes(a.statut));
+  const g=$('fleetGrid');
+  if(!data.length){ g.innerHTML='<div class="col-span-full py-12 text-center text-slate-400"><i class="fas fa-truck-medical text-4xl block mb-3"></i>Aucune unité dans cette catégorie.</div>'; return; }
+  const CFG={
+    disponible:{lbl:'Disponible',dot:'bg-green-500',badge:'bg-green-50 text-green-700 border-green-200'},
+    en_mission:{lbl:'En mission',dot:'bg-orange-500 blink',badge:'bg-orange-50 text-orange-700 border-orange-200'},
+    maintenance:{lbl:'Maintenance',dot:'bg-slate-400',badge:'bg-slate-50 text-slate-600 border-slate-200'},
+    en_panne:{lbl:'En panne',dot:'bg-red-500',badge:'bg-red-50 text-red-600 border-red-200'},
   };
-
-  grid.innerHTML = data.map(a => {
-    const cfg = STATUT_CFG[a.statut] || STATUT_CFG.maintenance;
-    const hasGPS = a.latitude && a.longitude;
-    const missionActive = missionsData.find(m => m.ambulance === a.id && m.statut !== 'termine');
-    const lastMaj = a.derniere_maj_position ? new Date(a.derniere_maj_position).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : null;
-
-    return `<div class="bg-white rounded-2xl border border-samu-border shadow-sm hover:shadow-md transition-shadow p-5 flex flex-col gap-4">
-      <!-- Header -->
+  g.innerHTML=data.map(a=>{
+    const c=CFG[a.statut]||CFG.maintenance;
+    const mA=missions.find(m=>m.ambulance===a.id&&m.statut!=='termine');
+    const maj=a.derniere_maj_position?new Date(a.derniere_maj_position).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):null;
+    return `<div class="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition p-5 flex flex-col gap-3">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-3">
-          <div class="w-11 h-11 rounded-xl bg-blue-50 flex items-center justify-center text-samu-blue">
+          <div class="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center text-brand-blue">
             <i class="fas fa-truck-medical text-lg"></i>
           </div>
           <div>
-            <p class="font-bold text-slate-800 leading-none text-base">${a.matricule}</p>
-            <p class="text-xs text-slate-400 mt-0.5 uppercase tracking-wide">${a.equipement || 'SMUR Standard'}</p>
+            <p class="font-bold text-slate-800 leading-none">${a.matricule}</p>
+            <p class="text-xs text-slate-400 mt-0.5 uppercase">${a.equipement||'SMUR Standard'}</p>
           </div>
         </div>
-        <div class="flex items-center gap-1.5">
-          <div class="w-2 h-2 rounded-full ${cfg.dot} ${a.statut === 'en_mission' ? 'blink' : ''}"></div>
-          <span class="text-xs font-bold px-2 py-1 rounded-lg border ${cfg.badge}">${cfg.label}</span>
-        </div>
+        <span class="text-xs font-bold px-2 py-1 rounded-lg border flex items-center gap-1.5 ${c.badge}">
+          <span class="w-1.5 h-1.5 rounded-full ${c.dot}"></span>${c.lbl}
+        </span>
       </div>
-      <!-- GPS -->
-      <div class="bg-slate-50 rounded-xl p-3 flex items-center gap-2">
-        <i class="fas fa-location-crosshairs text-slate-400 text-sm w-4"></i>
+      <div class="bg-slate-50 rounded-xl p-3 text-sm text-slate-600 flex items-start gap-2">
+        <i class="fas fa-location-crosshairs text-slate-400 mt-0.5 shrink-0"></i>
         <div>
-          ${hasGPS
-            ? `<p class="text-xs font-semibold text-slate-700">${a.latitude.toFixed(5)}, ${a.longitude.toFixed(5)}</p>
-               ${lastMaj ? `<p class="text-[10px] text-slate-400 mt-0.5">Mis à jour à ${lastMaj}</p>` : ''}`
-            : `<p class="text-xs text-slate-400 italic">Position GPS non disponible</p>`}
+          ${a.latitude?`<p class="font-medium text-slate-700">${a.latitude.toFixed(5)}, ${a.longitude.toFixed(5)}</p>
+          ${maj?`<p class="text-xs text-slate-400">Mis à jour : ${maj}</p>`:''}`
+          :'<p class="text-slate-400 italic text-xs">Position GPS non disponible</p>'}
         </div>
-        ${hasGPS ? `<button onclick="voirSurCarte(${a.latitude},${a.longitude})" class="ml-auto text-xs text-samu-blue hover:text-blue-700 font-semibold shrink-0"><i class="fas fa-map mr-1"></i>Carte</button>` : ''}
+        ${a.latitude?`<button onclick="voirCarte(${a.latitude},${a.longitude})" class="ml-auto text-xs text-brand-blue font-semibold shrink-0 hover:text-blue-700"><i class="fas fa-map mr-1"></i>Voir</button>`:''}
       </div>
-      <!-- Mission active -->
-      ${missionActive ? `<div class="bg-orange-50 border border-orange-100 rounded-xl p-3">
-        <p class="text-[10px] font-bold text-orange-600 uppercase tracking-wide mb-1">Mission active</p>
-        <p class="text-xs text-slate-700">${STATUT_MISSION_LABELS[missionActive.statut] || missionActive.statut} — Alerte #${missionActive.alerte}</p>
-      </div>` : ''}
+      ${mA?`<div class="bg-orange-50 border border-orange-100 rounded-xl p-3 text-xs">
+        <p class="font-bold text-orange-600 uppercase mb-0.5">Mission active</p>
+        <p class="text-slate-600">${SSTAT[mA.statut]||mA.statut}</p>
+      </div>`:''}
     </div>`;
   }).join('');
 }
+function voirCarte(lat,lon){ gotoTab('supervision'); setTimeout(()=>map&&map.flyTo([lat,lon],16,{duration:1}),100); }
 
-function voirSurCarte(lat, lon) {
-  switchTab('supervision');
-  setTimeout(() => { if (map) map.flyTo([lat, lon], 16, { duration: 1 }); }, 100);
-}
-
-// ─── HISTORIQUE ────────────────────────────────────────────────────────────────
-
-function renderHistory() {
-  const q      = (document.getElementById('history-search').value || '').toLowerCase();
-  const tbody  = document.getElementById('history-table-body');
-  const emptyEl = document.getElementById('history-empty');
-
-  let data = missionsData;
-  if (q) {
-    data = data.filter(m =>
-      String(m.id).includes(q) ||
-      (m.ambulance_detail?.matricule || '').toLowerCase().includes(q) ||
-      (m.alerte_detail?.description || '').toLowerCase().includes(q) ||
-      (m.alerte_detail?.adresse_manuelle || '').toLowerCase().includes(q) ||
-      (m.hopital_detail?.nom || '').toLowerCase().includes(q) ||
-      (m.statut || '').includes(q)
-    );
-  }
-
-  // Summary counts
-  const total    = missionsData.length;
-  const termine  = missionsData.filter(m => m.statut === 'termine').length;
-  const enCours  = missionsData.filter(m => m.statut !== 'termine').length;
-  document.getElementById('hist-total').textContent   = total;
-  document.getElementById('hist-termine').textContent  = termine;
-  document.getElementById('hist-cours').textContent    = enCours;
-
-  if (!data.length) {
-    tbody.innerHTML = '';
-    emptyEl.classList.remove('hidden');
-    return;
-  }
-  emptyEl.classList.add('hidden');
-
-  const STATUT_BADGE = {
-    en_route:        'bg-yellow-50 text-yellow-700 border-yellow-200',
-    arrive:          'bg-blue-50 text-blue-700 border-blue-200',
-    prise_en_charge: 'bg-indigo-50 text-indigo-700 border-indigo-200',
-    transport:       'bg-purple-50 text-purple-700 border-purple-200',
-    termine:         'bg-green-50 text-green-700 border-green-200',
-    en_panne:        'bg-red-50 text-red-700 border-red-200',
+// ── Historique ────────────────────────────────────────────────────────────────
+function renderHistory(){
+  const q=($('searchHist').value||'').toLowerCase();
+  let data=[...missions];
+  if(q) data=data.filter(m=>
+    String(m.id).includes(q)||(m.ambulance_detail?.matricule||'').toLowerCase().includes(q)||
+    (m.alerte_detail?.adresse_manuelle||'').toLowerCase().includes(q)||
+    (m.hopital_detail?.nom||'').toLowerCase().includes(q)||(m.statut||'').includes(q)
+  );
+  $('hTotal').textContent=missions.length;
+  $('hTermine').textContent=missions.filter(m=>m.statut==='termine').length;
+  $('hCours').textContent=missions.filter(m=>m.statut!=='termine').length;
+  const tb=$('histBody'), he=$('histEmpty');
+  if(!data.length){ tb.innerHTML=''; he.classList.remove('hidden'); return; }
+  he.classList.add('hidden');
+  const SB={
+    en_route:'bg-yellow-50 text-yellow-700 border-yellow-200',
+    arrive:'bg-blue-50 text-blue-700 border-blue-200',
+    prise_en_charge:'bg-indigo-50 text-indigo-700 border-indigo-200',
+    transport:'bg-purple-50 text-purple-700 border-purple-200',
+    termine:'bg-green-50 text-green-700 border-green-200',
+    en_panne:'bg-red-50 text-red-700 border-red-200',
   };
-
-  tbody.innerHTML = data.map(m => {
-    const date    = new Date(m.date_creation).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
-    const sosId   = m.alerte_detail ? String(m.alerte_detail.id_suivi).substring(0, 8).toUpperCase() : '—';
-    const gravite = m.alerte_detail?.gravite || '—';
-    const amb     = m.ambulance_detail?.matricule || '—';
-    const hopital = m.hopital_detail?.nom || '<span class="text-slate-300 italic text-xs">Non assigné</span>';
-    const sBadge  = STATUT_BADGE[m.statut] || 'bg-slate-50 text-slate-600 border-slate-200';
-    const sLabel  = STATUT_MISSION_LABELS[m.statut] || m.statut;
-    const gc      = GRAVITE_CSS[gravite] || 'bg-slate-50 text-slate-500 border-slate-200';
-
-    let duree = '—';
-    if (m.date_creation && m.date_fin) {
-      const diffMs = new Date(m.date_fin) - new Date(m.date_creation);
-      if (diffMs > 0) {
-        const mins = Math.round(diffMs / 60000);
-        duree = mins < 60 ? `${mins} min` : `${Math.floor(mins/60)}h ${mins%60}min`;
-      }
+  tb.innerHTML=data.map(m=>{
+    const date=new Date(m.date_creation).toLocaleString('fr-FR',{dateStyle:'short',timeStyle:'short'});
+    const sos=m.alerte_detail?String(m.alerte_detail.id_suivi).substring(0,8).toUpperCase():'—';
+    const amb=m.ambulance_detail?.matricule||'—';
+    const hop=m.hopital_detail?.nom||'<span class="text-slate-300 italic text-xs">—</span>';
+    const grav=m.alerte_detail?.gravite||'—';
+    const gc=GCSS[grav]||'bg-slate-50 text-slate-500';
+    const sb=SB[m.statut]||'bg-slate-50 text-slate-600 border-slate-200';
+    let dur='—';
+    if(m.date_creation&&m.date_fin){
+      const ms=new Date(m.date_fin)-new Date(m.date_creation);
+      if(ms>0){const mn=Math.round(ms/60000); dur=mn<60?mn+'min':Math.floor(mn/60)+'h '+mn%60+'min';}
     }
-
     return `<tr class="hover:bg-slate-50 transition-colors">
-      <td class="px-5 py-3.5 font-mono font-bold text-slate-800">#${m.id}</td>
-      <td class="px-5 py-3.5 text-slate-600 text-sm whitespace-nowrap">${date}</td>
-      <td class="px-5 py-3.5 font-mono text-sm text-slate-500">#${sosId}</td>
-      <td class="px-5 py-3.5 font-semibold text-samu-blue text-sm">${amb}</td>
-      <td class="px-5 py-3.5 text-sm">${hopital}</td>
-      <td class="px-5 py-3.5"><span class="text-xs font-bold px-2 py-0.5 rounded border ${gc}">${gravite}</span></td>
-      <td class="px-5 py-3.5"><span class="text-xs font-semibold px-2 py-1 rounded-lg border ${sBadge}">${sLabel}</span></td>
-      <td class="px-5 py-3.5 text-sm text-slate-500 tabular-nums">${duree}</td>
+      <td class="px-4 py-3 font-mono font-bold text-slate-800">#${m.id}</td>
+      <td class="px-4 py-3 text-slate-600 text-sm whitespace-nowrap">${date}</td>
+      <td class="px-4 py-3 font-mono text-xs text-slate-500">#${sos}</td>
+      <td class="px-4 py-3 font-semibold text-brand-blue text-sm">${amb}</td>
+      <td class="px-4 py-3 text-sm">${hop}</td>
+      <td class="px-4 py-3"><span class="text-[11px] font-bold px-1.5 py-0.5 rounded ${gc}">${grav}</span></td>
+      <td class="px-4 py-3"><span class="text-[11px] font-semibold px-2 py-0.5 rounded-lg border ${sb}">${SSTAT[m.statut]||m.statut}</span></td>
+      <td class="px-4 py-3 text-sm text-slate-500 tabular-nums">${dur}</td>
     </tr>`;
   }).join('');
 }
 
-// ─── TOAST ─────────────────────────────────────────────────────────────────────
-
-function showToast(msg, type = 'info') {
-  const c    = document.getElementById('toast-container');
-  const el   = document.createElement('div');
-  const ico  = { success: 'fa-check-circle', error: 'fa-exclamation-circle', info: 'fa-info-circle' }[type];
-  el.className = `toast toast-${type}`;
-  el.innerHTML = `<i class="fas ${ico}"></i><span>${msg}</span>`;
-  c.appendChild(el);
-  setTimeout(() => el.remove(), 4500);
-}
-
-// ─── INIT ──────────────────────────────────────────────────────────────────────
-
-// Auto-refresh every 5s (only if logged in)
-setInterval(() => { if (accessToken) fetchDashboardData(); }, 5000);
-
-// If token exists from previous session, try to auto-login
-(async function() {
-  const stored = localStorage.getItem('reg_access');
-  if (stored) {
-    accessToken = stored;
-    const res = await apiCall('/dashboard_data/');
-    if (res && res.ok) {
-      const data = await res.json();
-      alertesData    = data.alertes    || [];
-      ambulancesData = data.ambulances || [];
-      missionsData   = data.missions   || [];
-      hopitauxData   = data.hopitaux   || [];
-      document.getElementById('login-overlay').style.display = 'none';
-      updateKPIs();
-      renderAlertList();
-      updateParcCounts();
-      initMap();
-      setTimeout(updateMapMarkers, 500);
-    } else {
-      accessToken = null;
-      localStorage.removeItem('reg_access');
-    }
-  }
+// ── Auto-login si token stocké ────────────────────────────────────────────────
+(async()=>{
+  if(!token) return;
+  const r=await api('/dashboard_data/');
+  if(r&&r.ok){
+    const d=await r.json();
+    alertes=d.alertes||[]; ambulances=d.ambulances||[]; missions=d.missions||[]; hopitaux=d.hopitaux||[];
+    $('login-overlay').style.display='none';
+    updateKPIs(); renderAlertList(); updateParcCounts();
+    initMap();
+  } else { token=''; localStorage.removeItem('samu_tk'); }
 })();
 </script>
 </body>
