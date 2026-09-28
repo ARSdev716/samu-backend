@@ -124,6 +124,18 @@ class RegisterViewSet(viewsets.GenericViewSet):
             if last_name is not None:
                 user.last_name = str(last_name).strip()
             user.save()
+
+        ambulance_info = None
+        if user.role == Utilisateur.Role.EQUIPE_INTERVENTION:
+            amb = Ambulance.objects.filter(ambulancier=user).first()
+            if amb:
+                ambulance_info = {
+                    "id": amb.id,
+                    "matricule": amb.matricule,
+                    "statut": amb.statut,
+                    "equipement": amb.equipement,
+                }
+
         return Response({
             "id": user.id,
             "username": user.username,
@@ -132,6 +144,7 @@ class RegisterViewSet(viewsets.GenericViewSet):
             "role": user.role,
             "first_name": user.first_name,
             "last_name": user.last_name,
+            "ambulance": ambulance_info,
             "date_joined": user.date_joined,
         })
 
@@ -351,6 +364,33 @@ class MissionViewSet(viewsets.ModelViewSet):
         elif nouveau_statut == "en_panne":
             mission.ambulance.statut = Ambulance.Statut.EN_PANNE
             mission.ambulance.save(update_fields=["statut"])
+        mission.save()
+
+        return Response(MissionSerializer(mission).data)
+
+    @action(detail=True, methods=["post"], permission_classes=[EstEquipeIntervention])
+    def alerter_hopital(self, request, pk=None):
+        """L'ambulancier sélectionne l'hôpital récepteur et déclenche une pré-alerte d'admission."""
+        mission = self.get_object()
+        hopital_id = request.data.get("hopital_id")
+
+        try:
+            hopital = Hopital.objects.get(pk=hopital_id)
+        except Hopital.DoesNotExist:
+            return Response({"detail": "Hôpital introuvable."}, status=status.HTTP_404_NOT_FOUND)
+
+        mission.hopital_recepteur = hopital
+        mission.statut = Mission.Statut.TRANSPORT
+
+        # Recalculer l'itinéraire de l'ambulance vers l'hôpital récepteur
+        from core.services.itineraire import calculer_itineraire_optimal
+        amb_lat = mission.ambulance.latitude
+        amb_lon = mission.ambulance.longitude
+        if amb_lat and amb_lon and hopital.latitude and hopital.longitude:
+            mission.itineraire_optimise = calculer_itineraire_optimal(
+                origine=(amb_lat, amb_lon),
+                destination=(hopital.latitude, hopital.longitude),
+            )
         mission.save()
 
         return Response(MissionSerializer(mission).data)
