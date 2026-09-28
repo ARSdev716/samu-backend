@@ -380,9 +380,7 @@ class MissionViewSet(viewsets.ModelViewSet):
             mission.date_fin = timezone.now()
             mission.ambulance.statut = Ambulance.Statut.DISPONIBLE
             mission.ambulance.save(update_fields=["statut"])
-            if mission.alerte:
-                mission.alerte.statut = Alerte.StatutAlerte.RESOLUE
-                mission.alerte.save(update_fields=["statut"])
+            # Alerte reste en statut "prise_en_charge" — la mission est close côté backend
         elif nouveau_statut == "en_panne":
             mission.ambulance.statut = Ambulance.Statut.EN_PANNE
             mission.ambulance.save(update_fields=["statut"])
